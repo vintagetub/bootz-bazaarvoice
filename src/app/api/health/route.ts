@@ -1,4 +1,4 @@
-import { getBvConfig, getMpsBehaviour, getPickerConfig } from "@/lib/config";
+import { getBvConfig, getPickerConfig } from "@/lib/config";
 
 /**
  * Uptime probe.
@@ -14,7 +14,6 @@ export const dynamic = "force-dynamic";
 export function GET() {
   const { clientName, siteId, environment, locale, loaderUrl, cookieConsent, problems } =
     getBvConfig();
-  const { redirectOnClose, thankYouPath } = getMpsBehaviour();
   const picker = getPickerConfig();
 
   const allProblems = [...problems, ...picker.problems];
@@ -31,7 +30,6 @@ export function GET() {
         loaderUrl,
         cookieConsent,
       },
-      mps: { redirectOnClose, thankYouPath },
       productPicker: {
         campaignId: picker.campaignId,
         categoryId: picker.categoryId,

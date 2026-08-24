@@ -1,34 +1,20 @@
-/** Minimal typings for the globals bv.js installs and reads. */
-
-/** Payload of the `mpsClose` event emitted when the consumer closes the form. */
-export interface MpsCloseData {
-  /** True when every product in the link was reviewed. */
-  completed?: boolean;
-  /** Number of products the consumer reviewed in this session. */
-  productsSubmitted?: number;
-  [key: string]: unknown;
-}
-
-export interface BvSwatSubmission {
-  on(event: "mpsClose", handler: (data: MpsCloseData) => void): void;
-  on(event: string, handler: (data: unknown) => void): void;
-}
+/** Minimal typings for the global bv.js installs. */
 
 export interface BvGlobal {
-  swat_submission?: BvSwatSubmission;
   [key: string]: unknown;
 }
 
 declare global {
   interface Window {
-    /** Invoked by bv.js once the Bazaarvoice library is ready. */
-    bvCallback?: (BV: BvGlobal) => void;
+    /** Set by bv.js once the Bazaarvoice library has initialised. */
     BV?: BvGlobal;
-  }
-
-  interface WindowEventMap {
-    /** Re-broadcast of Bazaarvoice's `mpsClose`, for local listeners. */
-    "bootz:mpsClose": CustomEvent<MpsCloseData>;
+    /**
+     * Hook bv.js invokes when the library is ready, for attaching listeners to
+     * Bazaarvoice submission events. Nothing defines it today — Bazaarvoice
+     * documents no such event for Product Picker — but it is declared here so
+     * that adding one later is a typed change rather than a cast.
+     */
+    bvCallback?: (BV: BvGlobal) => void;
   }
 }
 

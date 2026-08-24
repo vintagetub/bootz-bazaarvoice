@@ -5,12 +5,11 @@
  * NEXT_PUBLIC_ variable: the loader URL is rendered into the HTML by a server
  * component, which is the only place it is needed.
  *
- * Reference: https://docs.bazaarvoice.com/articles/#!ratings-reviews/host-the-mps-form-on-your-domain
+ * Reference: https://docs.bazaarvoice.com/articles/#!ratings-reviews/generic_review_submission
  *            https://docs.bazaarvoice.com/articles/ratings-reviews/bv-pixel-implementation-bv-js/a/add-the-bv-loader
  */
 
 export type BvEnvironment = "staging" | "production";
-export type RedirectOnClose = "completed" | "always" | "never";
 
 export interface BvConfig {
   /** Bazaarvoice client name, lowercase. */
@@ -29,13 +28,6 @@ export interface BvConfig {
   problems: string[];
 }
 
-export interface MpsBehaviour {
-  /** When to send the consumer to the thank-you page after `mpsClose`. */
-  redirectOnClose: RedirectOnClose;
-  /** Same-origin path the consumer lands on. */
-  thankYouPath: string;
-}
-
 export interface BrandConfig {
   name: string;
   logoUrl: string | null;
@@ -43,11 +35,11 @@ export interface BrandConfig {
 }
 
 /**
- * Product Picker settings, for the QR-code entry point.
+ * Product Picker settings.
  *
- * Separate app from MPS: Product Picker lets a consumer choose the product
- * themselves, which is the only workable flow when the link comes off a
- * physical product and carries no `user`/`products` tokens.
+ * Product Picker lets the consumer choose the product themselves, which is the
+ * only workable flow when the link comes off a physical product and so carries
+ * no order and no product IDs.
  *
  * Reference: https://docs.bazaarvoice.com/articles/#!ratings-reviews/generic_review_submission
  */
@@ -80,12 +72,6 @@ const CLIENT_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
 const SITE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** Bazaarvoice locale codes, e.g. `en_US`, `fr_CA`. */
 const LOCALE_RE = /^[a-z]{2}_[A-Z]{2}$/;
-/**
- * A single-slash-rooted, same-origin path. Rejects `//evil.com` and
- * `https://evil.com` (open redirect) and restricts the character set so the
- * value is safe to inline into a script literal.
- */
-const THANK_YOU_PATH_RE = /^\/(?!\/)[A-Za-z0-9\-._~!$&'()*+,;=:@/?%]*$/;
 /** Bazaarvoice: "up to 255 alphanumeric characters (including underscores)". */
 const CAMPAIGN_ID_RE = /^\w{1,255}$/;
 /** Catalog `ExternalId` values. Bazaarvoice allows alphanumerics plus `_`, `-`, `.`. */
@@ -153,21 +139,6 @@ export function getBvConfig(): BvConfig {
       : null;
 
   return { clientName, siteId, environment, locale, loaderUrl, cookieConsent, problems };
-}
-
-export function getMpsBehaviour(): MpsBehaviour {
-  const raw = read("MPS_REDIRECT_ON_CLOSE")?.toLowerCase();
-  const redirectOnClose: RedirectOnClose =
-    raw === "always" || raw === "never" || raw === "completed" ? raw : "completed";
-
-  // Must be a same-origin absolute path: the inline callback assigns it
-  // straight to window.location.href, so a protocol-relative or absolute URL
-  // here would be an open redirect. The character allowlist also keeps the
-  // value safe to embed in that inline script.
-  const configured = read("MPS_THANK_YOU_PATH") ?? "/thank-you";
-  const thankYouPath = THANK_YOU_PATH_RE.test(configured) ? configured : "/thank-you";
-
-  return { redirectOnClose, thankYouPath };
 }
 
 /**

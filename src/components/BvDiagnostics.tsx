@@ -15,6 +15,35 @@ interface Snapshot {
   /** Populated only on the debug route, where BvErrorCapture is installed. */
   consoleLog: string[];
   network: string[];
+  /** Every Bazaarvoice request the browser actually made, by any mechanism. */
+  resources: string[];
+}
+
+/**
+ * Reads the browser's own Resource Timing buffer.
+ *
+ * This is the authoritative view of what bv.js fetched. Wrapping `fetch` and
+ * `XMLHttpRequest` misses script tags, images, and beacons — and bv.js is a
+ * loader whose whole job is injecting further scripts — so an empty
+ * fetch/XHR list must not be read as "no network activity".
+ */
+function readResourceTimings(): string[] {
+  try {
+    if (typeof performance?.getEntriesByType !== "function") return [];
+    return performance
+      .getEntriesByType("resource")
+      .filter((entry) => entry.name.includes("bazaarvoice.com"))
+      .map((entry) => {
+        const timing = entry as PerformanceResourceTiming & { responseStatus?: number };
+        const status = timing.responseStatus ? ` → ${timing.responseStatus}` : "";
+        // transferSize 0 with a nonzero duration usually means a cache hit or an
+        // opaque cross-origin response, so it is reported rather than judged.
+        const size = timing.transferSize ? ` ${timing.transferSize}B` : "";
+        return `${timing.initiatorType || "?"}${status}${size}  ${entry.name.slice(0, 240)}`;
+      });
+  } catch {
+    return [];
+  }
 }
 
 /** Reads the data-bv-* attributes back off the DOM, not the server config. */
@@ -81,6 +110,7 @@ export function BvDiagnostics({
         pickerAttributes: describePickerAttributes(container),
         consoleLog: [...(window.__bvLog ?? [])],
         network: [...(window.__bvNet ?? [])],
+        resources: readResourceTimings(),
         ...readContainer(container),
       });
     };
@@ -124,8 +154,13 @@ export function BvDiagnostics({
       {forceVisible ? (
         <>
           <LogBlock
-            title="Bazaarvoice network calls"
-            empty="None recorded. If this stays empty, bv.js never asked Bazaarvoice for products — the picker is failing before it fetches."
+            title="All Bazaarvoice requests (Resource Timing — authoritative)"
+            empty="Nothing at all, not even bv.js. Something is blocking the request entirely."
+            lines={snapshot.resources}
+          />
+          <LogBlock
+            title="fetch / XHR calls only"
+            empty="None — but this does NOT mean no network activity. Script tags, images and beacons use neither, and bv.js is a loader that injects scripts. Read the Resource Timing list above instead."
             lines={snapshot.network}
           />
           <LogBlock

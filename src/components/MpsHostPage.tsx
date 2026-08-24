@@ -1,4 +1,4 @@
-import { MpsDiagnostics } from "@/components/MpsDiagnostics";
+import { BvDiagnostics } from "@/components/BvDiagnostics";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
 import { getBrandConfig, getBvConfig } from "@/lib/config";
 
@@ -46,7 +46,7 @@ export function MpsHostPage() {
           </div>
         )}
 
-        <MpsDiagnostics loaderUrl={loaderUrl} />
+        <BvDiagnostics app="multi_submission" loaderUrl={loaderUrl} />
         {environment !== "production" ? (
           <p className="diagnostics__hint" style={{ marginTop: "1.5rem" }}>
             Bazaarvoice environment: <strong>{environment}</strong>

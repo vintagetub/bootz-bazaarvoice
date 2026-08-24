@@ -3,19 +3,25 @@
 import { useEffect, useState } from "react";
 import type { MpsCloseData } from "@/types/bazaarvoice";
 
-/** Query flag that reveals this panel. Never shown to ordinary consumers. */
+/** Query flag that reveals the panel. Never shown to ordinary consumers. */
 export const DEBUG_FLAG = "bvDebug";
+
+/** Which Bazaarvoice app the host page is rendering. */
+export type BvApp = "multi_submission" | "product_picker";
 
 interface Snapshot {
   paramNames: string[];
   rawQuery: string;
-  userParam: string;
-  productsParam: string;
   bvGlobal: string;
   callbackDefined: string;
   containerFound: string;
   containerPopulated: string;
+  /** MPS only. */
+  userParam: string;
+  productsParam: string;
   lastCloseEvent: string;
+  /** Product Picker only — read back off the DOM, not the server config. */
+  pickerAttributes: string;
 }
 
 /** Shows a token is present without printing it — `user` carries consumer PII. */
@@ -23,6 +29,12 @@ function describeToken(value: string | null): string {
   if (value === null) return "missing";
   if (value === "") return "present but empty";
   return `present (${value.length} chars, starts "${value.slice(0, 8)}…")`;
+}
+
+function describeProducts(value: string | null): string {
+  if (value === null) return "missing";
+  if (value === "") return "present but empty";
+  return `${value.split(",").filter(Boolean).length} product id(s)`;
 }
 
 /**
@@ -39,18 +51,26 @@ function redactRawQuery(search: string): string {
   );
 }
 
-function describeProducts(value: string | null): string {
-  if (value === null) return "missing";
-  if (value === "") return "present but empty";
-  const ids = value.split(",").filter(Boolean);
-  return `${ids.length} product id(s)`;
+function describePickerAttributes(container: Element | null): string {
+  if (!container) return "n/a";
+  const names = [
+    "data-bv-campaign-id",
+    "data-bv-category-id",
+    "data-bv-family-product-id",
+    "data-bv-inline",
+    "data-bv-prevent-close",
+  ];
+  const present = names
+    .filter((name) => container.hasAttribute(name))
+    .map((name) => `${name.replace("data-bv-", "")}=${container.getAttribute(name)}`);
+  return present.join("  ") || "none set";
 }
 
 function readContainer(
   container: Element | null,
 ): Pick<Snapshot, "containerFound" | "containerPopulated"> {
   if (!container) {
-    return { containerFound: "NOT FOUND — the form cannot render", containerPopulated: "n/a" };
+    return { containerFound: "NOT FOUND — nothing can render", containerPopulated: "n/a" };
   }
   return {
     containerFound: "found",
@@ -65,12 +85,12 @@ function readContainer(
  * Read-only integration check for the staging test step in Bazaarvoice's
  * implementation checklist. Renders only when `?bvDebug=1` is in the URL.
  *
- * Everything is read on the client so the page itself stays statically
+ * Everything is read on the client so the host pages stay statically
  * rendered — a static page is materially more available than a per-request
  * render, and Bazaarvoice does not fail over to their hosted page if ours is
  * down.
  */
-export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
+export function BvDiagnostics({ app, loaderUrl }: { app: BvApp; loaderUrl: string | null }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
 
   useEffect(() => {
@@ -85,7 +105,7 @@ export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
     window.addEventListener("bootz:mpsClose", onClose);
 
     const sample = () => {
-      const container = document.querySelector('[data-bv-show="multi_submission"]');
+      const container = document.querySelector(`[data-bv-show="${app}"]`);
       setSnapshot({
         paramNames: [...params.keys()].filter((name) => name !== DEBUG_FLAG),
         rawQuery: redactRawQuery(window.location.search),
@@ -93,6 +113,7 @@ export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
         productsParam: describeProducts(params.get("products")),
         bvGlobal: window.BV ? "window.BV is present" : "window.BV not set yet",
         callbackDefined: typeof window.bvCallback === "function" ? "yes" : "no",
+        pickerAttributes: describePickerAttributes(container),
         lastCloseEvent,
         ...readContainer(container),
       });
@@ -111,22 +132,26 @@ export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
       window.clearInterval(interval);
       window.clearTimeout(stop);
     };
-  }, []);
+  }, [app]);
 
   if (!snapshot) return null;
 
   const rows: [string, string][] = [
+    ["Bazaarvoice app", app],
     ["bv.js URL", loaderUrl ?? "NOT CONFIGURED"],
     ["window.bvCallback", snapshot.callbackDefined],
     ["Bazaarvoice global", snapshot.bvGlobal],
     ["Container div", snapshot.containerFound],
     ["Container content", snapshot.containerPopulated],
-    ["user param", snapshot.userParam],
-    ["products param", snapshot.productsParam],
+    ...(app === "product_picker"
+      ? ([["Picker attributes", snapshot.pickerAttributes]] as [string, string][])
+      : ([
+          ["user param", snapshot.userParam],
+          ["products param", snapshot.productsParam],
+          ["Last mpsClose", snapshot.lastCloseEvent],
+        ] as [string, string][])),
     ["Other params", snapshot.paramNames.join(", ") || "none"],
     ["Raw query string", snapshot.rawQuery],
-    ["Page path", typeof window === "undefined" ? "" : window.location.pathname],
-    ["Last mpsClose", snapshot.lastCloseEvent],
   ];
 
   return (
@@ -141,7 +166,8 @@ export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
         ))}
       </dl>
       <p className="diagnostics__hint">
-        Visible because <code>?{DEBUG_FLAG}=1</code> is in the URL. Remove it to see the consumer view.
+        Visible because <code>?{DEBUG_FLAG}=1</code> is in the URL. Remove it to see the consumer
+        view.
       </p>
     </section>
   );

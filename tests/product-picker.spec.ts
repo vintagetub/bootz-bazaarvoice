@@ -94,6 +94,41 @@ test.describe("Product Picker page", () => {
   });
 });
 
+test.describe("Product Picker diagnostics", () => {
+  test("is hidden unless ?bvDebug=1 is present", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto(REGISTER);
+    await page.waitForTimeout(300);
+    await expect(page.getByLabel("Bazaarvoice integration diagnostics")).toHaveCount(0);
+  });
+
+  test("reports the picker attributes and container state", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto(`${REGISTER}?bvDebug=1`);
+
+    const panel = page.getByLabel("Bazaarvoice integration diagnostics");
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("product_picker");
+    await expect(panel).toContainText("campaign-id=bootz_qr_registration");
+    await expect(panel).toContainText("category-id=Shower_Base");
+    // With bv.js blocked the container must report as present but unrendered —
+    // this is the state that distinguishes "our markup is wrong" from
+    // "Bazaarvoice declined to render".
+    await expect(panel).toContainText("Container div");
+    await expect(panel).toContainText("found");
+    await expect(panel).toContainText("empty — Bazaarvoice has not rendered into it");
+  });
+
+  test("does not report MPS-only rows on the picker page", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto(`${REGISTER}?bvDebug=1`);
+
+    const panel = page.getByLabel("Bazaarvoice integration diagnostics");
+    await expect(panel).toBeVisible();
+    await expect(panel).not.toContainText("Last mpsClose");
+  });
+});
+
 test.describe("health endpoint", () => {
   test("reports the Product Picker configuration", async ({ request }) => {
     const response = await request.get("/api/health");

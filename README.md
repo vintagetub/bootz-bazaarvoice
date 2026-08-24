@@ -297,9 +297,10 @@ not match `@playwright/test`, set `PLAYWRIGHT_CHROMIUM_PATH` to its binary.
 
 ### Diagnostics
 
-Append `?bvDebug=1` to the host URL for a panel showing the resolved bv.js URL, whether
+Append `?bvDebug=1` to **either** host page for a panel showing the resolved bv.js URL, whether
 `window.bvCallback` and `window.BV` exist, whether the container has been populated, the raw query
-string, and which parameters arrived. Use it for the staging test step in Bazaarvoice's checklist.
+string, and — on `/register` — the picker attributes actually present on the element. Use it for the
+staging test step in Bazaarvoice's checklist.
 
 It never prints the `user` token — only its length and first few characters, and the value is
 redacted out of the raw query string — because that token carries consumer PII.
@@ -311,6 +312,7 @@ redacted out of the raw query string — because that token carries consumer PII
 | `window.BV not set yet` after a few seconds | bv.js did not load or execute. Check the domain is on the Bazaarvoice allowlist, the browser console for CSP violations, and that the bv.js URL returns 200 |
 | `window.BV is present`, container empty, `user param missing` | Expected. There is nothing to render without a real submission link — this is what opening the URL directly always looks like |
 | `window.BV is present`, container empty, both params present | Our side is complete and Bazaarvoice is declining to render. The cause is account-side: form configuration, or an expired/invalid token. Not a code problem |
+| On `/register`: `window.BV is present`, container empty | Our side is complete. Either Product Picker is not enabled for the account, or no products are mapped to `Shower_Base` — see the catalog section above |
 | `%2C` in the raw query string | Something re-encoded the `products` list. Find the redirect or rewrite doing it |
 
 ---

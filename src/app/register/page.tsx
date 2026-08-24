@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BvDiagnostics } from "@/components/BvDiagnostics";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
 import { getBrandConfig, getBvConfig, getPickerConfig } from "@/lib/config";
 
@@ -69,6 +70,8 @@ export default function RegisterPage() {
             />
           </div>
         )}
+
+        <BvDiagnostics app="product_picker" loaderUrl={loaderUrl} />
       </main>
       <SiteFooter />
     </>

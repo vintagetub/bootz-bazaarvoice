@@ -77,6 +77,25 @@ const CAMPAIGN_ID_RE = /^\w{1,255}$/;
 /** Catalog `ExternalId` values. Bazaarvoice allows alphanumerics plus `_`, `-`, `.`. */
 const EXTERNAL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 
+/**
+ * Values of `BV_PICKER_CATEGORY_ID` that mean "no category attribute at all".
+ *
+ * Omitting `data-bv-category-id` makes Bazaarvoice offer the root category —
+ * every mapped product. That is the diagnostic case: if the picker renders
+ * without a category but not with one, the category mapping is the problem.
+ */
+const ROOT_CATEGORY_ALIASES = new Set(["none", "all", "root", "*"]);
+
+/** Whether a value is usable as a catalog `ExternalId`. */
+export function isValidExternalId(value: string): boolean {
+  return EXTERNAL_ID_RE.test(value);
+}
+
+/** Whether a configured category value means "offer the root category". */
+export function isRootCategory(value: string): boolean {
+  return ROOT_CATEGORY_ALIASES.has(value.toLowerCase());
+}
+
 function read(name: string): string | undefined {
   const raw = process.env[name];
   if (raw === undefined) return undefined;
@@ -166,9 +185,14 @@ export function getPickerConfig(): PickerConfig {
 
   let categoryId: string | null = null;
   if (familyProductId === null) {
-    categoryId = read("BV_PICKER_CATEGORY_ID") ?? DEFAULT_CATEGORY_ID;
-    if (!EXTERNAL_ID_RE.test(categoryId)) {
-      problems.push(`BV_PICKER_CATEGORY_ID "${categoryId}" is not a valid ExternalId.`);
+    const configured = read("BV_PICKER_CATEGORY_ID") ?? DEFAULT_CATEGORY_ID;
+    // "none"/"all"/"root"/"*" drop the attribute so Bazaarvoice offers the root
+    // category. Not an error — it is how you scope the picker to everything.
+    if (!isRootCategory(configured)) {
+      categoryId = configured;
+      if (!EXTERNAL_ID_RE.test(configured)) {
+        problems.push(`BV_PICKER_CATEGORY_ID "${configured}" is not a valid ExternalId.`);
+      }
     }
   } else if (read("BV_PICKER_CATEGORY_ID") !== undefined) {
     problems.push(

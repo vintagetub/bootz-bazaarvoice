@@ -160,6 +160,7 @@ the conflict. A test asserts exactly one of the two is ever on the element.
 | --- | --- |
 | `/` | The Product Picker. **This is the URL the QR codes encode.** |
 | `/register` | The same page, for a more descriptive link where there is room |
+| `/debug/picker` | Operator tool for diagnosing an empty picker — see below |
 | `/api/health` | Uptime probe. `200` when configured, `503` with a reason when not |
 | `/robots.txt` | Disallows everything — nothing here is useful to a crawler |
 
@@ -250,7 +251,38 @@ and Bazaarvoice declining to render into correct markup:
 | --- | --- |
 | `Container div: NOT FOUND` | Our markup is broken, or the config is invalid. Check `/api/health` |
 | `window.BV not set yet` after a few seconds | bv.js did not load or execute. Check the domain allowlist, the console for CSP violations, and that the bv.js URL returns 200 |
-| `window.BV is present`, container `found`, content `empty` | **Our side is complete.** Either Product Picker is not enabled for the account, or no products are mapped to `Shower_Base`. Not a code problem |
+| `window.BV is present`, container `found`, content `empty` | **Our side is complete.** Either Product Picker is not enabled for the account, or no products are mapped to `Shower_Base`. Not a code problem — use `/debug/picker` to tell which |
+
+### Diagnosing an empty picker: `/debug/picker`
+
+The production pages bake their category in at build time, so "does it render with a different
+scope?" would otherwise be a redeploy to answer. This route renders per request and takes the scope
+from the query string:
+
+```
+/debug/picker?category=none          root category — every mapped product
+/debug/picker?category=Shower_Base   a specific category ExternalId
+/debug/picker?family=BZ-4832         a product family instead
+/debug/picker?inline=false           lightbox rather than in-page
+```
+
+The comparison that isolates the cause:
+
+| `?category=none` | `?category=Shower_Base` | Conclusion |
+| --- | --- | --- |
+| empty | empty | Product Picker is not really enabled **for this deployment zone and locale**, or nothing in the catalog is category-mapped at all. The Style Editor toggle is per deployment zone — check it was set on `main_site` |
+| renders | empty | Product Picker works. The `Shower_Base` mapping is the problem — see the catalog section above |
+| renders | renders | Nothing is wrong; compare against the production page's baked config in `/api/health` |
+
+A "renders" result with `category=none` is also the fastest way to confirm the account side is
+healthy before spending time on the feed.
+
+If `?category=none` is the configuration you want in production, set
+`BV_PICKER_CATEGORY_ID=none` (also accepts `all`, `root`, `*`) and the attribute is omitted on the
+real pages too.
+
+`/debug/picker` is unlinked and `noindex`, but it is publicly reachable — it deliberately exposes
+nothing that is not already readable in the page source of the production pages.
 
 ---
 

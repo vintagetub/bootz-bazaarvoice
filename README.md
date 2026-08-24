@@ -58,13 +58,30 @@ environment in Vercel if so — and know that reviews submitted from a preview a
 
 ### Account-side prerequisites
 
-Three things live in Bazaarvoice, not in this repo, and each one produces an **empty picker with no
-error message**:
+These live in Bazaarvoice, not in this repo, and each produces an **empty picker with no visible
+error**:
 
-1. **Product Picker must be enabled.** It is a Style Editor toggle on V2 display. If the option is
-   not there, Bazaarvoice Support has to enable it.
+1. **`product_picker` must be registered in the deployment's bv.js bundle.** This is the one that
+   bit us — see below. The Style Editor toggle alone is not sufficient.
 2. **Our domain must be on the Bazaarvoice allowlist**, or bv.js refuses to initialise.
-3. **`Shower_Base` must exist in the product catalog** — see below.
+3. **`Shower_Base` must exist in the product catalog** — see further below.
+
+### Checking what the bundle actually supports
+
+`bv.js` is generated per deployment zone and carries the list of apps that zone supports. Because it
+is plain JavaScript at a public URL, this is directly checkable rather than a matter of trust:
+
+```bash
+curl -s https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/bv.js \
+  | head -c 600                                   # the Capabilities banner and build date
+curl -s https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/bv.js \
+  | grep -o 'publicName:"[a-z_]*"' | sort -u       # every valid data-bv-show value
+```
+
+A `data-bv-show` value that is not in that `publicName` list has no handler: bv.js hits an unknown
+app, throws, and loads nothing further — which looks exactly like a catalog problem but is not one.
+Confirm `product_picker` is listed before spending time on the feed. The banner's build date also
+shows whether recent portal changes have been compiled into the bundle at all.
 
 ### Where `Shower_Base` has to be mapped
 
@@ -267,7 +284,23 @@ from the query string:
 /debug/picker?family=BZ-4832         a product family instead
 /debug/picker?inline=false           lightbox rather than in-page
 /debug/picker?crossorigin=1          unmask a bare "Script error." — see below
+/debug/picker?crossorigin=all        also unmask errors inside scripts bv.js injects
+/debug/picker?mode=ui                use BV.ui(...) instead of a container — see below
 ```
+
+### `?mode=ui` — the programmatic entry point
+
+Bazaarvoice documents two ways in: the `data-bv-show` container, and
+`BV.ui("rr","submit_generic",{...})`. `?mode=ui` uses the latter, which is worth trying for two
+reasons.
+
+It may work when the container does not. The declarative path needs `product_picker` registered in
+the bundle; `BV.ui` may reach the same implementation inside `swat-submission` without it.
+
+More importantly, **it reports the real error**. CORS masks *uncaught* errors only — because we make
+this call ourselves, we wrap it, and a caught exception gives up its message and stack whatever the
+script's origin. When `Script error.` is all the declarative path will say, this is how to find out
+what actually went wrong.
 
 ### Unmasking "Script error."
 

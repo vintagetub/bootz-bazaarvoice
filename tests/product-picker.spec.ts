@@ -394,3 +394,67 @@ test.describe("cross-origin unmasking and CSP capture", () => {
     expect(captured.some((line) => line.includes("resource-failed"))).toBe(true);
   });
 });
+
+test.describe("BV.ui programmatic mode", () => {
+  test("installs bvCallback before bv.js and reports the call", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?mode=ui");
+
+    // bvCallback must exist for bv.js to invoke; the capture script defines it
+    // before injecting the loader.
+    expect(await page.evaluate(() => typeof window.bvCallback)).toBe("function");
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    expect(captured.some((l) => l.includes("window.bvCallback installed"))).toBe(true);
+  });
+
+  test("reads the real error from a caught exception despite CORS masking", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?mode=ui");
+
+    // Stand in for bv.js: invoke the callback with a BV whose ui() throws.
+    await page.evaluate(() => {
+      const message = "REAL_ERROR_VISIBLE_BECAUSE_CAUGHT";
+      window.bvCallback?.({
+        ui() {
+          throw new Error(message);
+        },
+      } as never);
+    });
+
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    const threw = captured.find((l) => l.startsWith("bv-ui-threw"));
+    expect(threw).toContain("REAL_ERROR_VISIBLE_BECAUSE_CAUGHT");
+  });
+
+  test("reports plainly when the deployment has no programmatic API", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?mode=ui");
+
+    await page.evaluate(() => window.bvCallback?.({} as never));
+
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    expect(captured.some((l) => l.includes("BV.ui is not a function"))).toBe(true);
+  });
+
+  test("passes the scope through to BV.ui and omits a root category", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?mode=ui&category=none");
+
+    await page.evaluate(() => {
+      window.bvCallback?.({ ui() {} } as never);
+    });
+
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    const call = captured.find((l) => l.includes("calling BV.ui"));
+    expect(call).toContain('"campaignId":"bootz_qr_registration"');
+    // Root category means no categoryId key at all, matching the declarative case.
+    expect(call).not.toContain("categoryId");
+  });
+
+  test("does not render a product_picker container in ui mode", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?mode=ui");
+    // BV.ui builds its own element; ours would be a duplicate app on the page.
+    await expect(page.locator('[data-bv-show="product_picker"]')).toHaveCount(0);
+  });
+});

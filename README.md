@@ -72,9 +72,55 @@ Things that can only be changed on Bazaarvoice's side:
 Two prerequisites that are easy to miss:
 
 - **Our domains must be on the Bazaarvoice allowlist**, or bv.js refuses to initialise.
-- **The product feed must map `Shower_Base` as a `CategoryExternalId`** on the shower base products.
-  Product Picker only shows products whose categories are mapped — with no mapping, the picker
-  renders empty and the failure looks like a code bug.
+- **`Shower_Base` must exist in the product catalog** — see below. Without it the picker renders
+  empty, and the failure looks like a code bug.
+
+### Where `Shower_Base` has to be mapped
+
+`data-bv-category-id` matches a category `ExternalId` in the product catalog. That takes two
+things, and either one alone fails:
+
+1. The category **declared** in the `<Categories>` block of the feed:
+
+   ```xml
+   <Categories>
+     <Category>
+       <ExternalId>Shower_Base</ExternalId>
+       <Name>Shower Bases</Name>
+     </Category>
+   </Categories>
+   ```
+
+2. Each shower base **referencing** it in `<Products>`:
+
+   ```xml
+   <Product>
+     <ExternalId>BZ-4832</ExternalId>
+     <CategoryExternalId>Shower_Base</CategoryExternalId>
+   </Product>
+   ```
+
+Declared but unreferenced → the picker shows an empty category. Referenced but undeclared → the
+feed import errors.
+
+**Check the feed's category style first.** `<CategoryExternalId>` and `<CategoryPath>` are mutually
+exclusive per product. A feed using `<CategoryPath>` identifies categories by *name* and contains no
+category `ExternalId` values at all, so `data-bv-category-id` has nothing to match however it is
+spelled. If that is how the Bootz feed is built, either convert those products to
+`<CategoryExternalId>` or target a product family with `BV_PICKER_FAMILY_PRODUCT_ID` instead.
+
+`ExternalId` accepts only alphanumerics, hyphens, and underscores — `Shower_Base` is valid — and IDs
+are case-insensitive, so casing is not a likely cause of an empty picker.
+
+**Doing it without a feed change:** Portal → **More → Product Catalog → Categories → Add category**,
+deselecting the auto-generated ID so it can be set to `Shower_Base` (it cannot be changed after
+saving), then assigning each product via its **Details** section. Note that
+[catalog data source priority](https://docs.bazaarvoice.com/articles/#!ratings-reviews/catalog-sources)
+decides whether the next feed import overwrites Portal edits — worth confirming before relying on
+this for production rather than a one-off test.
+
+**Verifying:** the Portal **Products** list has a *Product category* column;
+**Product Catalog → Feed → Validate Product Feed** shows the last 10 imports and their status.
 
 ---
 
@@ -270,7 +316,8 @@ Bazaarvoice's implementation checklist, mapped to this repo:
 Product Picker, additionally:
 
 - [ ] **Product Picker enabled** → Style Editor toggle, or Bazaarvoice Support
-- [ ] `Shower_Base` mapped as a `CategoryExternalId` in the product feed
+- [ ] Confirm the feed uses `<CategoryExternalId>`, not `<CategoryPath>` (see above)
+- [ ] `Shower_Base` declared in `<Categories>` **and** referenced by the shower base products
 - [ ] `/register` shows the expected shower bases, not an empty picker
 - [ ] `bootz_qr_registration` appears against those submissions in Bazaarvoice reporting
 - [ ] QR codes point at the production `/register` URL
@@ -287,3 +334,6 @@ links to our domain and preserves the URL parameters.
 - [CSP support for V2 applications](https://docs.bazaarvoice.com/articles/ratings-reviews/csp-support-for-v2-applications)
 - [Multi-product review submission](https://docs.bazaarvoice.com/articles/#!ratings-reviews/multi-product-submission-form)
 - [Product Picker](https://docs.bazaarvoice.com/articles/#!ratings-reviews/generic_review_submission)
+- [XML schema and data requirements](https://docs.bazaarvoice.com/articles/#!ratings-reviews/xml-schema-and-data-requirements)
+  — the `<Categories>` and `<Products>` element reference
+- [Product Catalog in Portal](https://docs.bazaarvoice.com/articles/#!ratings-reviews/product_catalog)

@@ -63,8 +63,27 @@ error**:
 
 1. **`product_picker` must be registered in the deployment's bv.js bundle.** This is the one that
    bit us — see below. The Style Editor toggle alone is not sufficient.
-2. **Our domain must be on the Bazaarvoice allowlist**, or bv.js refuses to initialise.
+2. **Our domain must be on the Bazaarvoice allowlist**, or bv.js aborts on load. See below — this
+   one is easy to get wrong and invisible without checking.
 3. **`Shower_Base` must exist in the product catalog** — see further below.
+
+### The domain allowlist
+
+bv.js checks the page's hostname against a `domains` list in the deployment config and stops if it
+is absent. Nothing is logged that identifies the cause, so it looks exactly like every other reason
+the container might stay empty.
+
+The list is readable, and `/debug/picker` checks it and prints the verdict. By hand:
+
+```bash
+curl -s https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/swat-submission-config.js \
+  | grep -o '"domainAddress":"[^"]*"'
+```
+
+Entries carry `allowSubdomain`, so an entry for `bootz.com` with that flag covers
+`reviews.bootz.com` and any other subdomain. **That is the cheapest route to an allowlisted host:
+serving this app from a `bootz.com` subdomain needs no Bazaarvoice change at all.** A
+`*.vercel.app` hostname has to be added explicitly, and only the exact one that was added works.
 
 ### Checking what the bundle actually supports
 
@@ -269,7 +288,8 @@ and Bazaarvoice declining to render into correct markup:
 | --- | --- |
 | `Container div: NOT FOUND` | Our markup is broken, or the config is invalid. Check `/api/health` |
 | `window.BV not set yet` after a few seconds | bv.js did not load or execute. Check the domain allowlist, the console for CSP violations, and that the bv.js URL returns 200 |
-| `window.BV is present`, container `found`, content `empty` | **Our side is complete.** Either Product Picker is not enabled for the account, or no products are mapped to `Shower_Base`. Not a code problem — use `/debug/picker` to tell which |
+| `Domain allowlist: NOT ALLOWLISTED` | Fix this first — bv.js aborts before doing anything else, so every other reading is meaningless until it passes |
+| `window.BV is present`, container `found`, content `empty` | **Our side is complete.** Check the allowlist verdict, then that `product_picker` is in the bundle's `publicName` list, then the catalog. Not a code problem |
 
 ### Diagnosing an empty picker: `/debug/picker`
 

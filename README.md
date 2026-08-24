@@ -119,14 +119,15 @@ this for production rather than a one-off test.
 
 Two things on one page.
 
-**The loader**, in the root layout — Bazaarvoice's step 1, verbatim:
+**The loader** — Bazaarvoice's step 1, verbatim:
 
 ```html
 <script async src="https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/bv.js"></script>
 ```
 
-Rendered once for every route, since Bazaarvoice's docs are explicit that bv.js is added exactly
-once per page.
+Rendered by each page rather than the root layout, so `/debug/picker` can load bv.js with CORS while
+the consumer pages do not. Every page still renders it exactly once, which is what Bazaarvoice's
+add-it-once rule requires; React hoists it into `<head>` wherever in the tree it appears.
 
 There is deliberately no `window.bvCallback`. That hook exists to attach listeners to Bazaarvoice
 submission events, and Bazaarvoice documents no such event for Product Picker — the only documented

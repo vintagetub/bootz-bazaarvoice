@@ -1,48 +1,88 @@
 # Bootz — Bazaarvoice MPS host
 
-A small Next.js app that hosts the Bazaarvoice **Multi-Product Submission (MPS)** form on our own
-domain, so consumers arriving from a Review Request Email stay on a Bootz URL instead of being
-redirected to a Bazaarvoice-hosted page.
+A small Next.js app that hosts Bazaarvoice review-collection forms on our own domain, so consumers
+stay on a Bootz URL instead of being redirected to a Bazaarvoice-hosted page.
 
-Built to Bazaarvoice's guide:
-[Host MPS form on custom domains](https://docs.bazaarvoice.com/articles/#!ratings-reviews/host-the-mps-form-on-your-domain).
+It serves two separate Bazaarvoice apps off one shared `bv.js` loader:
+
+| Page | Bazaarvoice app | Entry point |
+| --- | --- | --- |
+| `/reviews/submit` | **Multi-Product Submission (MPS)** | Review Request Email — the link carries `user` and `products` |
+| `/register` | **Product Picker** | QR code on the product — the consumer picks their own product |
+
+Built to Bazaarvoice's guides:
+[Host MPS form on custom domains](https://docs.bazaarvoice.com/articles/#!ratings-reviews/host-the-mps-form-on-your-domain)
+and [Product Picker](https://docs.bazaarvoice.com/articles/#!ratings-reviews/generic_review_submission).
+
+### Why two pages and not one
+
+MPS renders nothing without `user` and `products` in the URL. A QR code printed on a shower base
+cannot carry those — there is no order and no known consumer at print time. Product Picker is the
+app built for that case: it shows the products in a category and lets the consumer choose.
+
+`campaignId` and `categoryId` belong to Product Picker only; they have no effect on the MPS
+container. The two apps must never share a page.
 
 ---
 
-## What you still need to fill in
+## Configuration
 
-The app is complete but **cannot render the form until these values are set**. Everything is read
-from environment variables — no code changes needed.
+The confirmed Bootz account values are compiled in as defaults, so a deployment needs **no
+environment variables at all** to work:
 
-| Value | Env var | Where to get it |
+| Setting | Value | Override |
 | --- | --- | --- |
-| Bazaarvoice client name (lowercase) | `BV_CLIENT_NAME` | Bazaarvoice implementation team, or read it out of the `bv.js` URL already on the storefront |
-| Deployment zone ID | `BV_SITE_ID` | Bazaarvoice portal → **Site Manager** → the icon to the right of the deployment zone. Default is `main_site` |
-| Locale | `BV_LOCALE` | `en_US` unless we are collecting in another locale |
-| Cookie consent on? | `BV_COOKIE_CONSENT` | `true` only if the Bazaarvoice OneTrust integration is enabled for our account |
-| Production URL | — | The domain to deploy to, e.g. `https://reviews.bootzindustries.com`. Goes in the Bazaarvoice **MPS host URL** field |
-| Staging URL | — | e.g. `https://reviews-staging.bootzindustries.com`. Goes in **MPS staging host URL** |
-| Brand assets | `BRAND_NAME`, `BRAND_LOGO_URL`, `BRAND_HOME_URL` | Logo URL and storefront homepage |
+| Client name | `bootz` | `BV_CLIENT_NAME` |
+| Deployment zone | `main_site` | `BV_SITE_ID` |
+| Locale | `en_US` | `BV_LOCALE` |
+| Environment | auto — see below | `BV_ENVIRONMENT` |
+| Picker campaign ID | `bootz_qr_registration` | `BV_PICKER_CAMPAIGN_ID` |
+| Picker category ID | `Shower_Base` | `BV_PICKER_CATEGORY_ID` |
 
-Copy `.env.example` to `.env.local` for local work, and set the same variables in the Vercel project
-for each environment.
+Still worth setting: `BRAND_LOGO_URL` and `BRAND_HOME_URL` for the header and footer, and
+`BV_COOKIE_CONSENT=true` if the Bazaarvoice OneTrust integration is enabled on our account. See
+`.env.example` for the full list.
 
-### Also needs a request to Bazaarvoice Support
+### The `environment` segment
 
-Three things can only be changed on Bazaarvoice's side:
+`BV_ENVIRONMENT` decides whether bv.js is loaded from the `staging` or `production` path, and
+Bazaarvoice's own verification step says to confirm it matches the domain you are serving from.
+
+Left unset, a Vercel **Production** deployment resolves to `production` and everything else —
+previews, local dev — resolves to `staging`. That is the safe default: a preview deploy cannot write
+test reviews into the production pipeline.
+
+**If we do not have a staging deployment zone provisioned**, preview deploys will point at a
+`staging` path that does not exist and bv.js will fail to load. In that case set
+`BV_ENVIRONMENT=production` on the Preview environment in Vercel — and know that reviews submitted
+from a preview are then real.
+
+### Needs a request to Bazaarvoice Support
+
+Things that can only be changed on Bazaarvoice's side:
 
 1. Turn **Enable Multi-Product Submission on Custom Domain** to **ON**.
-2. Set **MPS host URL** (production) and **MPS staging host URL** to the deployed URLs.
+2. Set **MPS host URL** (production) and **MPS staging host URL** to the deployed `/reviews/submit`
+   URLs.
 3. Select the **Inline** display mode. (The page markup is identical for Popup and Inline — only
    Bazaarvoice's configuration decides which you get. This app's layout is built for Inline.)
+4. Enable **Product Picker**, if it is not already on. It is a Style Editor toggle on V2 display;
+   Support can enable it if the option is missing.
 
-Also confirm our domains are on the Bazaarvoice allowlist, or bv.js will refuse to initialise.
+Two prerequisites that are easy to miss:
+
+- **Our domains must be on the Bazaarvoice allowlist**, or bv.js refuses to initialise.
+- **The product feed must map `Shower_Base` as a `CategoryExternalId`** on the shower base products.
+  Product Picker only shows products whose categories are mapped — with no mapping, the picker
+  renders empty and the failure looks like a code bug.
 
 ---
 
 ## How it works
 
-The whole integration is three things on one page:
+### The MPS page (`/reviews/submit`)
+
+Three things on one page:
 
 1. **The loader.** `src/components/BazaarvoiceLoader.tsx` renders one inline script into `<head>`
    that defines `window.bvCallback` and *then* injects
@@ -67,6 +107,27 @@ The whole integration is three things on one page:
    `data.completed` is true, and it always re-broadcasts a `bootz:mpsClose` DOM event so analytics
    can listen without touching this code.
 
+### The Product Picker page (`/register`)
+
+Same loader from the shared layout, then a single container element:
+
+```html
+<div data-bv-show="product_picker"
+     data-bv-campaign-id="bootz_qr_registration"
+     data-bv-category-id="Shower_Base"
+     data-bv-inline="true"
+     data-bv-prevent-close="false"></div>
+```
+
+The path is short on purpose — it gets printed on a label, so
+`https://<domain>/register` needs to survive being read off a sticker or typed by hand.
+`/reviews/register` redirects here.
+
+`data-bv-category-id` and `data-bv-family-product-id` are **mutually exclusive**: Bazaarvoice throws
+a console error and renders nothing if both are present. Rather than emit that markup, setting
+`BV_PICKER_FAMILY_PRODUCT_ID` wins, the category is dropped, and `/api/health` returns 503 naming
+the conflict. A test asserts exactly one of the two attributes is ever on the element.
+
 ### Query parameters are load-bearing
 
 The form renders **nothing** if `user` and `products` are missing from the URL. Any redirect or
@@ -81,9 +142,13 @@ a proxy rule, or a CDN rewrite in front of this app, verify the query string sur
 | Route | Purpose |
 | --- | --- |
 | `/reviews/submit` | The MPS host page. **This is the URL that goes in the Bazaarvoice portal.** |
+| `/register` | Product Picker page. **This is the URL the QR codes encode.** |
 | `/thank-you` | Landing page for the `mpsClose` redirect |
 | `/api/health` | Uptime probe. `200` when configured, `503` with a reason when not |
 | `/robots.txt` | Disallows everything — these URLs carry consumer tokens |
+
+`/`, `/reviews`, and `/submit` redirect to `/reviews/submit`; `/reviews/register` redirects to
+`/register`.
 
 ---
 
@@ -202,6 +267,14 @@ Bazaarvoice's implementation checklist, mapped to this repo:
 - [ ] Confirm the `mpsClose` redirect reaches `/thank-you`
 - [ ] Point an uptime monitor at `/api/health`
 
+Product Picker, additionally:
+
+- [ ] **Product Picker enabled** → Style Editor toggle, or Bazaarvoice Support
+- [ ] `Shower_Base` mapped as a `CategoryExternalId` in the product feed
+- [ ] `/register` shows the expected shower bases, not an empty picker
+- [ ] `bootz_qr_registration` appears against those submissions in Bazaarvoice reporting
+- [ ] QR codes point at the production `/register` URL
+
 Existing Review Request Email templates do **not** need updating — Bazaarvoice redirects old hosted
 links to our domain and preserves the URL parameters.
 
@@ -213,3 +286,4 @@ links to our domain and preserves the URL parameters.
 - [Add the BV loader](https://docs.bazaarvoice.com/articles/ratings-reviews/bv-pixel-implementation-bv-js/a/add-the-bv-loader)
 - [CSP support for V2 applications](https://docs.bazaarvoice.com/articles/ratings-reviews/csp-support-for-v2-applications)
 - [Multi-product review submission](https://docs.bazaarvoice.com/articles/#!ratings-reviews/multi-product-submission-form)
+- [Product Picker](https://docs.bazaarvoice.com/articles/#!ratings-reviews/generic_review_submission)

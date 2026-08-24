@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
       { source: "/", destination: "/reviews/submit", permanent: false },
       { source: "/reviews", destination: "/reviews/submit", permanent: false },
       { source: "/submit", destination: "/reviews/submit", permanent: false },
+      // Product Picker (QR) entry point lives at the short /register path.
+      { source: "/reviews/register", destination: "/register", permanent: false },
     ];
   },
 };

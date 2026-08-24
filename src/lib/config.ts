@@ -42,7 +42,37 @@ export interface BrandConfig {
   homeUrl: string | null;
 }
 
+/**
+ * Product Picker settings, for the QR-code entry point.
+ *
+ * Separate app from MPS: Product Picker lets a consumer choose the product
+ * themselves, which is the only workable flow when the link comes off a
+ * physical product and carries no `user`/`products` tokens.
+ *
+ * Reference: https://docs.bazaarvoice.com/articles/#!ratings-reviews/generic_review_submission
+ */
+export interface PickerConfig {
+  /** Segments submissions in Bazaarvoice reporting. */
+  campaignId: string;
+  /** Category `ExternalId` from the product feed. Mutually exclusive with `familyProductId`. */
+  categoryId: string | null;
+  /** Product family `ExternalId`. Mutually exclusive with `categoryId`. */
+  familyProductId: string | null;
+  /** `false` renders the picker in a lightbox instead of in the page. */
+  inline: boolean;
+  /** `true` removes the lightbox close button. Ignored when `inline` is true. */
+  preventClose: boolean;
+  problems: string[];
+}
+
 const LOADER_HOST = "https://apps.bazaarvoice.com";
+
+/** Bazaarvoice account values, confirmed by the Bootz implementation team. */
+const DEFAULT_CLIENT_NAME = "bootz";
+const DEFAULT_SITE_ID = "main_site";
+const DEFAULT_LOCALE = "en_US";
+const DEFAULT_CAMPAIGN_ID = "bootz_qr_registration";
+const DEFAULT_CATEGORY_ID = "Shower_Base";
 
 /** Bazaarvoice client names are lowercase alphanumerics with `-`/`_`. */
 const CLIENT_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
@@ -56,6 +86,10 @@ const LOCALE_RE = /^[a-z]{2}_[A-Z]{2}$/;
  * value is safe to inline into a script literal.
  */
 const THANK_YOU_PATH_RE = /^\/(?!\/)[A-Za-z0-9\-._~!$&'()*+,;=:@/?%]*$/;
+/** Bazaarvoice: "up to 255 alphanumeric characters (including underscores)". */
+const CAMPAIGN_ID_RE = /^\w{1,255}$/;
+/** Catalog `ExternalId` values. Bazaarvoice allows alphanumerics plus `_`, `-`, `.`. */
+const EXTERNAL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 
 function read(name: string): string | undefined {
   const raw = process.env[name];
@@ -93,20 +127,17 @@ function resolveEnvironment(problems: string[]): BvEnvironment {
 export function getBvConfig(): BvConfig {
   const problems: string[] = [];
 
-  const clientNameRaw = read("BV_CLIENT_NAME");
-  const clientName = clientNameRaw?.toLowerCase() ?? "";
-  if (!clientName) {
-    problems.push("BV_CLIENT_NAME is not set.");
-  } else if (!CLIENT_NAME_RE.test(clientName)) {
+  const clientName = (read("BV_CLIENT_NAME") ?? DEFAULT_CLIENT_NAME).toLowerCase();
+  if (!CLIENT_NAME_RE.test(clientName)) {
     problems.push(`BV_CLIENT_NAME "${clientName}" is not a valid Bazaarvoice client name.`);
   }
 
-  const siteId = read("BV_SITE_ID") ?? "main_site";
+  const siteId = read("BV_SITE_ID") ?? DEFAULT_SITE_ID;
   if (!SITE_ID_RE.test(siteId)) {
     problems.push(`BV_SITE_ID "${siteId}" is not a valid deployment zone ID.`);
   }
 
-  const locale = read("BV_LOCALE") ?? "en_US";
+  const locale = read("BV_LOCALE") ?? DEFAULT_LOCALE;
   if (!LOCALE_RE.test(locale)) {
     problems.push(`BV_LOCALE "${locale}" is not a valid Bazaarvoice locale code (expected e.g. en_US).`);
   }
@@ -137,6 +168,52 @@ export function getMpsBehaviour(): MpsBehaviour {
   const thankYouPath = THANK_YOU_PATH_RE.test(configured) ? configured : "/thank-you";
 
   return { redirectOnClose, thankYouPath };
+}
+
+/**
+ * Resolves the Product Picker settings.
+ *
+ * `categoryId` and `familyProductId` are mutually exclusive — Bazaarvoice's docs
+ * warn that passing both throws a console error and the picker fails to render.
+ * Rather than emit that broken markup, an explicit family ID wins and the
+ * category is dropped, which is reported in `problems`.
+ */
+export function getPickerConfig(): PickerConfig {
+  const problems: string[] = [];
+
+  const campaignId = read("BV_PICKER_CAMPAIGN_ID") ?? DEFAULT_CAMPAIGN_ID;
+  if (!CAMPAIGN_ID_RE.test(campaignId)) {
+    problems.push(
+      `BV_PICKER_CAMPAIGN_ID "${campaignId}" must be 1-255 alphanumeric characters or underscores.`,
+    );
+  }
+
+  const familyProductId = read("BV_PICKER_FAMILY_PRODUCT_ID") ?? null;
+  if (familyProductId !== null && !EXTERNAL_ID_RE.test(familyProductId)) {
+    problems.push(`BV_PICKER_FAMILY_PRODUCT_ID "${familyProductId}" is not a valid ExternalId.`);
+  }
+
+  let categoryId: string | null = null;
+  if (familyProductId === null) {
+    categoryId = read("BV_PICKER_CATEGORY_ID") ?? DEFAULT_CATEGORY_ID;
+    if (!EXTERNAL_ID_RE.test(categoryId)) {
+      problems.push(`BV_PICKER_CATEGORY_ID "${categoryId}" is not a valid ExternalId.`);
+    }
+  } else if (read("BV_PICKER_CATEGORY_ID") !== undefined) {
+    problems.push(
+      "BV_PICKER_CATEGORY_ID and BV_PICKER_FAMILY_PRODUCT_ID are mutually exclusive; " +
+        "the family product ID was used and the category was ignored.",
+    );
+  }
+
+  return {
+    campaignId,
+    categoryId,
+    familyProductId,
+    inline: readBoolean("BV_PICKER_INLINE", true),
+    preventClose: readBoolean("BV_PICKER_PREVENT_CLOSE", false),
+    problems,
+  };
 }
 
 export function getBrandConfig(): BrandConfig {

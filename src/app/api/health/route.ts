@@ -1,4 +1,4 @@
-import { getBvConfig, getMpsBehaviour } from "@/lib/config";
+import { getBvConfig, getMpsBehaviour, getPickerConfig } from "@/lib/config";
 
 /**
  * Uptime probe.
@@ -15,8 +15,10 @@ export function GET() {
   const { clientName, siteId, environment, locale, loaderUrl, cookieConsent, problems } =
     getBvConfig();
   const { redirectOnClose, thankYouPath } = getMpsBehaviour();
+  const picker = getPickerConfig();
 
-  const healthy = loaderUrl !== null;
+  const allProblems = [...problems, ...picker.problems];
+  const healthy = loaderUrl !== null && picker.problems.length === 0;
 
   return Response.json(
     {
@@ -30,7 +32,14 @@ export function GET() {
         cookieConsent,
       },
       mps: { redirectOnClose, thankYouPath },
-      problems,
+      productPicker: {
+        campaignId: picker.campaignId,
+        categoryId: picker.categoryId,
+        familyProductId: picker.familyProductId,
+        inline: picker.inline,
+        preventClose: picker.preventClose,
+      },
+      problems: allProblems,
     },
     {
       status: healthy ? 200 : 503,

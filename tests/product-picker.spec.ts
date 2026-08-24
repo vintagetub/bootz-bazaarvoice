@@ -178,3 +178,58 @@ test.describe("health endpoint", () => {
     expect(body).not.toHaveProperty("mps");
   });
 });
+
+test.describe("debug route", () => {
+  test("category=none omits the attribute so the root category is offered", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?category=none");
+
+    const picker = page.locator('[data-bv-show="product_picker"]');
+    await expect(picker).toHaveCount(1);
+    // The whole point: no category filter at all.
+    await expect(picker).not.toHaveAttribute("data-bv-category-id", /.*/);
+    await expect(picker).toHaveAttribute("data-bv-campaign-id", "bootz_qr_registration");
+  });
+
+  test("an explicit category is applied", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?category=Some_Other_Cat");
+    await expect(page.locator('[data-bv-show="product_picker"]')).toHaveAttribute(
+      "data-bv-category-id",
+      "Some_Other_Cat",
+    );
+  });
+
+  test("family wins over category, never both", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?family=BZ-4832&category=Shower_Base");
+
+    const attrs = await page.locator('[data-bv-show="product_picker"]').evaluate((node) => ({
+      category: node.hasAttribute("data-bv-category-id"),
+      family: node.getAttribute("data-bv-family-product-id"),
+    }));
+    expect(attrs.category).toBe(false);
+    expect(attrs.family).toBe("BZ-4832");
+  });
+
+  test("rejects a junk category rather than putting it in the attribute", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto('/debug/picker?category=%22%3E%3Cscript%3E');
+
+    const picker = page.locator('[data-bv-show="product_picker"]');
+    // Falls back to the configured default instead of echoing the input.
+    await expect(picker).toHaveAttribute("data-bv-category-id", "Shower_Base");
+  });
+
+  test("shows diagnostics without needing the bvDebug flag", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker");
+    await expect(page.getByLabel("Bazaarvoice integration diagnostics")).toBeVisible();
+  });
+
+  test("stays out of search indexes", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+  });
+});

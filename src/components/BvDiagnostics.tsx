@@ -56,12 +56,20 @@ function readContainer(
  *
  * Everything is read on the client so the host pages stay statically rendered.
  */
-export function BvDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
+export function BvDiagnostics({
+  loaderUrl,
+  forceVisible = false,
+}: {
+  loaderUrl: string | null;
+  /** Set on the debug route, where the panel is the point of the page. */
+  forceVisible?: boolean;
+}) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (!["1", "true", "yes"].includes((params.get(DEBUG_FLAG) ?? "").toLowerCase())) return;
+    const flagged = ["1", "true", "yes"].includes((params.get(DEBUG_FLAG) ?? "").toLowerCase());
+    if (!flagged && !forceVisible) return;
 
     const sample = () => {
       const container = document.querySelector(CONTAINER_SELECTOR);
@@ -84,7 +92,7 @@ export function BvDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
       window.clearInterval(interval);
       window.clearTimeout(stop);
     };
-  }, []);
+  }, [forceVisible]);
 
   if (!snapshot) return null;
 
@@ -108,10 +116,12 @@ export function BvDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
           </div>
         ))}
       </dl>
-      <p className="diagnostics__hint">
-        Visible because <code>?{DEBUG_FLAG}=1</code> is in the URL. Remove it to see the consumer
-        view.
-      </p>
+      {forceVisible ? null : (
+        <p className="diagnostics__hint">
+          Visible because <code>?{DEBUG_FLAG}=1</code> is in the URL. Remove it to see the consumer
+          view.
+        </p>
+      )}
     </section>
   );
 }

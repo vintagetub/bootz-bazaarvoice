@@ -1,22 +1,21 @@
 import type { Metadata } from "next";
-import { MpsHostPage } from "@/components/MpsHostPage";
+import { ProductPickerPage } from "@/components/ProductPickerPage";
 import { getBrandConfig } from "@/lib/config";
 
 /**
- * The MPS host page at the site root.
+ * The Product Picker page at the site root.
  *
- * The Bazaarvoice portal's "MPS host URL" field is configured as the bare
- * domain, so the root has to serve the form itself rather than redirect to
- * `/reviews/submit` — see MpsHostPage for why a redirect is actively harmful
- * here.
+ * The root is the canonical URL because it is the one the QR codes encode, and
+ * a bare domain is the shortest thing to print on a label and the easiest to
+ * type by hand off a sticker.
  */
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
-  title: `Write a review | ${getBrandConfig().name}`,
+  title: `Review your purchase | ${getBrandConfig().name}`,
   robots: { index: false, follow: false },
 };
 
 export default function RootPage() {
-  return <MpsHostPage />;
+  return <ProductPickerPage />;
 }

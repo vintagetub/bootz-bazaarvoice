@@ -28,25 +28,14 @@ const nextConfig: NextConfig = {
   },
 
   /**
-   * Deliberately NO redirect for the MPS host page.
+   * No redirects.
    *
-   * `/` and `/reviews/submit` are both real pages rendering the same body, so
-   * whichever is entered in the Bazaarvoice portal serves the form directly.
-   * Redirecting would re-encode the query string — `products=A,B,C` becomes
-   * `products=A%2CB%2CC` — and the form renders nothing if bv.js reads those
-   * values without decoding them.
-   *
-   * The aliases below are convenience only; nothing in Bazaarvoice points at
-   * them, so the re-encoding does not matter on these paths.
+   * `/` and `/register` are both real pages serving the Product Picker, so a QR
+   * code or printed link using either path works without a hop. Redirects are
+   * avoided on the entry-point paths on principle: Next.js re-encodes the query
+   * string when it redirects, and a printed URL is not something we can fix
+   * after the fact if that ever matters.
    */
-  async redirects() {
-    return [
-      { source: "/reviews", destination: "/", permanent: false },
-      { source: "/submit", destination: "/", permanent: false },
-      // Product Picker (QR) entry point lives at the short /register path.
-      { source: "/reviews/register", destination: "/register", permanent: false },
-    ];
-  },
 };
 
 export default nextConfig;

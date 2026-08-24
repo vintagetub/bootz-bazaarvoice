@@ -1,5 +1,5 @@
 /**
- * Content Security Policy for the MPS host page.
+ * Content Security Policy for the Product Picker host pages.
  *
  * Derived from Bazaarvoice's own CSP reference for V2 applications:
  * https://docs.bazaarvoice.com/articles/ratings-reviews/csp-support-for-v2-applications

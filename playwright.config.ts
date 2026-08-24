@@ -32,8 +32,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npx next start -p ${PORT}`,
-    url: `http://127.0.0.1:${PORT}/thank-you`,
+    /**
+     * Builds as well as serves. The bv.js URL and the CSP are baked in at build
+     * time, so serving a build made with different environment variables would
+     * test something other than the config below.
+     */
+    command: `npx next build && npx next start -p ${PORT}`,
+    url: `http://127.0.0.1:${PORT}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {

@@ -458,3 +458,72 @@ test.describe("BV.ui programmatic mode", () => {
     await expect(page.locator('[data-bv-show="product_picker"]')).toHaveCount(0);
   });
 });
+
+test.describe("domain allowlist check", () => {
+  const CONFIG_GLOB = "https://apps.bazaarvoice.com/**/swat-submission-config.js";
+
+  /** Stands in for the real deployment config's domains block. */
+  function configBody(domains: { domainAddress: string; allowSubdomain: boolean }[]) {
+    const entries = domains
+      .map((d) => `{"allowSubdomain":${d.allowSubdomain},"domainAddress":"${d.domainAddress}"}`)
+      .join(",");
+    return `BV["swat-submission"].configure({"domains":[${entries}]});`;
+  }
+
+  test("flags a hostname that is not on the allowlist", async ({ page }) => {
+    await stubLoader(page);
+    await page.route(CONFIG_GLOB, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/javascript",
+        body: configBody([
+          { domainAddress: "bootz.com", allowSubdomain: true },
+          { domainAddress: "bootz-v3.vercel.app", allowSubdomain: true },
+        ]),
+      }),
+    );
+    await page.goto("/debug/picker");
+
+    const panel = page.getByLabel("Bazaarvoice integration diagnostics");
+    await expect(panel).toContainText("Domain allowlist");
+    await expect(panel).toContainText("NOT ALLOWLISTED");
+    // And it must show what IS allowed, so the fix is obvious.
+    await expect(panel).toContainText("bootz-v3.vercel.app");
+  });
+
+  test("passes a hostname covered by a wildcard subdomain entry", async ({ page }) => {
+    await stubLoader(page);
+    await page.route(CONFIG_GLOB, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/javascript",
+        // Playwright serves the app on 127.0.0.1, so allow that host.
+        body: configBody([{ domainAddress: "127.0.0.1", allowSubdomain: true }]),
+      }),
+    );
+    await page.goto("/debug/picker");
+
+    await expect(page.getByLabel("Bazaarvoice integration diagnostics")).toContainText("ALLOWED");
+  });
+
+  test("says so plainly when the config cannot be read", async ({ page }) => {
+    await stubLoader(page);
+    await page.route(CONFIG_GLOB, (route) => route.abort());
+    await page.goto("/debug/picker");
+
+    const panel = page.getByLabel("Bazaarvoice integration diagnostics");
+    await expect(panel).toContainText("Could not read the config");
+  });
+
+  test("the consumer pages do not fetch the config", async ({ page }) => {
+    let requested = false;
+    await stubLoader(page);
+    await page.route(CONFIG_GLOB, (route) => {
+      requested = true;
+      return route.abort();
+    });
+    await page.goto("/");
+    await page.waitForTimeout(600);
+    expect(requested, "the consumer page must not fetch the deployment config").toBe(false);
+  });
+});

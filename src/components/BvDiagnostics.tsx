@@ -19,6 +19,70 @@ interface Snapshot {
   resources: string[];
 }
 
+interface DomainCheck {
+  status: "allowed" | "blocked" | "unavailable";
+  hostname: string;
+  allowlist: string[];
+  detail: string;
+}
+
+/**
+ * Reads the `domains` allowlist out of the deployment config and compares it to
+ * the page's hostname.
+ *
+ * bv.js checks the hostname against this list and aborts if it is absent. That
+ * failure is indistinguishable from every other cause of an empty container, so
+ * it is worth checking explicitly rather than inferring.
+ */
+async function checkDomain(configUrl: string): Promise<DomainCheck> {
+  const hostname = window.location.hostname;
+  const base: DomainCheck = { status: "unavailable", hostname, allowlist: [], detail: "" };
+
+  let text: string;
+  try {
+    const response = await fetch(configUrl);
+    if (!response.ok) {
+      return { ...base, detail: `Config returned HTTP ${response.status}.` };
+    }
+    text = await response.text();
+  } catch (error) {
+    return {
+      ...base,
+      detail: `Could not read the config (${error instanceof Error ? error.message : "failed"}). Check it by hand: ${configUrl}`,
+    };
+  }
+
+  // Deliberately a regex rather than executing the file: it is a script that
+  // calls BV[...].configure(...), and running it would need bv.js present.
+  const entries = [...text.matchAll(/"domainAddress":"([^"]+)"/g)].map((match) => match[1] ?? "");
+  const subdomainFlags = [...text.matchAll(/"allowSubdomain":(true|false)/g)].map(
+    (match) => match[1] === "true",
+  );
+
+  if (entries.length === 0) {
+    return { ...base, detail: "No domains block found in the config." };
+  }
+
+  const allowlist = entries.map((domain, index) =>
+    subdomainFlags[index] ? `${domain} (+subdomains)` : domain,
+  );
+
+  const allowed = entries.some((domain, index) =>
+    subdomainFlags[index]
+      ? hostname === domain || hostname.endsWith(`.${domain}`)
+      : hostname === domain,
+  );
+
+  return {
+    status: allowed ? "allowed" : "blocked",
+    hostname,
+    allowlist,
+    detail: allowed
+      ? "This hostname is allowlisted."
+      : "This hostname is NOT allowlisted. bv.js aborts on an unrecognised host, which stops it loading anything — serve the page from a listed domain, or have Bazaarvoice add this one.",
+  };
+}
+
 /**
  * Reads the browser's own Resource Timing buffer.
  *
@@ -90,13 +154,30 @@ function readContainer(
  */
 export function BvDiagnostics({
   loaderUrl,
+  configUrl = null,
   forceVisible = false,
 }: {
   loaderUrl: string | null;
+  /** Deployment config URL, for the domain-allowlist check. */
+  configUrl?: string | null;
   /** Set on the debug route, where the panel is the point of the page. */
   forceVisible?: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [domain, setDomain] = useState<DomainCheck | null>(null);
+
+  useEffect(() => {
+    if (!forceVisible || !configUrl) return;
+    // No synchronous placeholder state: the block simply does not render until
+    // the check resolves, which keeps this effect a pure subscription.
+    let cancelled = false;
+    checkDomain(configUrl).then((result) => {
+      if (!cancelled) setDomain(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [configUrl, forceVisible]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -153,6 +234,35 @@ export function BvDiagnostics({
       </dl>
       {forceVisible ? (
         <>
+          {domain ? (
+            <div className="diagnostics__log">
+              <h3 className="diagnostics__title">Domain allowlist</h3>
+              <dl>
+                <div style={{ display: "contents" }}>
+                  <dt>This hostname</dt>
+                  <dd>{domain.hostname}</dd>
+                </div>
+                <div style={{ display: "contents" }}>
+                  <dt>Verdict</dt>
+                  <dd>
+                    {domain.status === "allowed"
+                      ? "ALLOWED"
+                      : domain.status === "blocked"
+                        ? "NOT ALLOWLISTED"
+                        : "could not determine"}
+                  </dd>
+                </div>
+              </dl>
+              {domain.allowlist.length > 0 ? (
+                <ol className="diagnostics__loglist">
+                  {domain.allowlist.map((entry) => (
+                    <li key={entry}>{entry}</li>
+                  ))}
+                </ol>
+              ) : null}
+              {domain.detail ? <p className="diagnostics__hint">{domain.detail}</p> : null}
+            </div>
+          ) : null}
           <LogBlock
             title="All Bazaarvoice requests (Resource Timing — authoritative)"
             empty="Nothing at all, not even bv.js. Something is blocking the request entirely."

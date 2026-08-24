@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import { BvDiagnostics } from "@/components/BvDiagnostics";
 import { BvErrorCapture } from "@/components/BvErrorCapture";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
-import { getBvConfig, getPickerConfig, isRootCategory, isValidExternalId } from "@/lib/config";
+import {
+  getBvConfig,
+  getPickerConfig,
+  getSubmissionConfigUrl,
+  isRootCategory,
+  isValidExternalId,
+} from "@/lib/config";
 
 /**
  * Operator-only scratchpad for narrowing down an empty Product Picker.
@@ -224,7 +230,7 @@ export default async function DebugPickerPage({
           </div>
         )}
 
-        <BvDiagnostics loaderUrl={loaderUrl} forceVisible />
+        <BvDiagnostics loaderUrl={loaderUrl} configUrl={getSubmissionConfigUrl()} forceVisible />
       </main>
       <SiteFooter />
     </>

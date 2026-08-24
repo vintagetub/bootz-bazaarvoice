@@ -215,6 +215,21 @@ export function getBrandConfig(): BrandConfig {
   return {
     name: read("BRAND_NAME") ?? "Bootz",
     logoUrl: read("BRAND_LOGO_URL") ?? null,
-    homeUrl: read("BRAND_HOME_URL") ?? null,
+    // Matches homePageURL in the Bazaarvoice deployment config.
+    homeUrl: read("BRAND_HOME_URL") ?? "https://bootz.com",
   };
+}
+
+/**
+ * URL of the submission app's deployment config.
+ *
+ * Worth reading because it carries the `domains` allowlist. bv.js checks the
+ * page's hostname against that list and aborts if it is absent — which looks
+ * identical to every other cause of an empty container, so the diagnostics
+ * panel surfaces it rather than leaving it buried in a config file.
+ */
+export function getSubmissionConfigUrl(): string | null {
+  const { loaderUrl } = getBvConfig();
+  if (!loaderUrl) return null;
+  return loaderUrl.replace(/\/bv\.js$/, "/swat-submission-config.js");
 }

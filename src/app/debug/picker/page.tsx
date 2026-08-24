@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { BazaarvoiceLoader } from "@/components/BazaarvoiceLoader";
 import { BvDiagnostics } from "@/components/BvDiagnostics";
 import { BvErrorCapture } from "@/components/BvErrorCapture";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
@@ -96,7 +95,14 @@ export default async function DebugPickerPage({
    * stops loading entirely with this set, Bazaarvoice's CDN does not send
    * Access-Control-Allow-Origin and the real message cannot be read this way.
    */
-  const crossOrigin = first(params.crossorigin) === "1";
+  const crossOriginParam = first(params.crossorigin);
+  const crossOrigin = crossOriginParam === "1" || crossOriginParam === "all";
+  /**
+   * `?crossorigin=all` also forces CORS onto the scripts bv.js injects. The
+   * top-level loader carrying the attribute is not enough: an exception thrown
+   * inside a child script is masked by that child's own CORS status.
+   */
+  const forceCrossOriginOnInjected = crossOriginParam === "all";
 
   const applied: [string, string][] = minimal
     ? [["data-bv-show", "product_picker (and nothing else)"]]
@@ -110,9 +116,15 @@ export default async function DebugPickerPage({
 
   return (
     <>
-      {/* First thing in the body, so it is installed before bv.js initialises. */}
-      <BvErrorCapture />
-      <BazaarvoiceLoader crossOrigin={crossOrigin} />
+      {/*
+        * Installs the instrumentation and then loads bv.js itself, so the
+        * patches are guaranteed to be in place first. This is why the debug
+        * route does not render BazaarvoiceLoader.
+        */}
+      <BvErrorCapture
+        crossOrigin={crossOrigin}
+        forceCrossOriginOnInjected={forceCrossOriginOnInjected}
+      />
       <SiteHeader />
       <main className="page">
         <h1 className="page__title">Product Picker debug</h1>
@@ -136,14 +148,18 @@ export default async function DebugPickerPage({
           <p className="diagnostics__hint">
             Scopes: <code>?minimal=1</code> (Bazaarvoice&apos;s bare documented example),{" "}
             <code>?category=none</code> (root category), <code>?category=Shower_Base</code>. Add{" "}
-            <code>&amp;crossorigin=1</code> to turn a bare &ldquo;Script error.&rdquo; into the real
-            message from bv.js. The blocks below show what bv.js actually did.
+            <code>&amp;crossorigin=1</code> to unmask an error thrown by bv.js itself, or{" "}
+            <code>&amp;crossorigin=all</code> to also unmask errors thrown inside the scripts bv.js
+            injects. The blocks below show what bv.js actually did.
           </p>
           {crossOrigin ? (
             <p className="diagnostics__hint">
-              <strong>crossorigin=1 is on.</strong> If &ldquo;Bazaarvoice global&rdquo; now reads{" "}
-              <em>not set</em> and a resource-failed entry appears, bv.js is not served with CORS
-              headers and the error cannot be unmasked this way.
+              <strong>
+                CORS unmasking is on{forceCrossOriginOnInjected ? " for injected scripts too" : ""}.
+              </strong>{" "}
+              If &ldquo;Bazaarvoice global&rdquo; now reads <em>not set</em> and a resource-failed
+              entry appears, that script is not served with CORS headers and its error cannot be
+              unmasked this way.
             </p>
           ) : null}
         </section>

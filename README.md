@@ -274,13 +274,19 @@ An exception thrown inside a cross-origin script reaches `window.onerror` as a b
 `Script error.` with no message, file, or line. The browser withholds the detail unless the script
 was fetched with CORS *and* the server sends `Access-Control-Allow-Origin`.
 
-`?crossorigin=1` loads bv.js with `crossorigin="anonymous"` so the real message comes through. Two
-outcomes:
+`?crossorigin=1` loads bv.js with `crossorigin="anonymous"` so the real message comes through.
 
-- **The error text appears** — that is bv.js's own failure, and it is what a Bazaarvoice support
-  ticket needs.
-- **bv.js stops loading entirely** (`window.BV not set`, plus a `resource-failed` entry) — their CDN
-  does not send the header, and the error cannot be unmasked this way.
+**`?crossorigin=all` also forces CORS onto the scripts bv.js injects.** This matters: bv.js is a
+loader, and an exception thrown inside a child script is masked by *that child's* CORS status, not
+the loader's. If `crossorigin=1` leaves `window.BV` set but the error still reads `Script error.`,
+the throw came from a child script and `all` is the flag that unmasks it.
+
+Outcomes:
+
+- **The error text appears** — that is Bazaarvoice's own failure, and it is what a support ticket
+  needs.
+- **The script stops loading** (`window.BV not set`, plus a `resource-failed` entry) — that host does
+  not send the header, and the error cannot be unmasked this way.
 
 The consumer pages never set it: a CORS fetch fails outright when the header is absent, which would
 break the picker for everyone. A test asserts that.
@@ -288,10 +294,13 @@ break the picker for everyone. A test asserts that.
 The page also shows two things devtools would otherwise be needed for, captured from the moment the
 page starts parsing:
 
-- **Bazaarvoice network calls** — every request bv.js makes to `bazaarvoice.com`, with its status. If
-  this list stays empty, bv.js never asked for products and the picker is failing before it fetches.
-  If a catalog request returns 200, the response is the authority on whether the category has
-  products.
+- **All Bazaarvoice requests (Resource Timing)** — the authoritative list, read from the browser's own
+  Resource Timing buffer. It catches every request by any mechanism: script tags, images, beacons,
+  `fetch`, `XHR`. If this shows only bv.js itself, the picker is failing before it asks for products.
+- **fetch / XHR calls only** — a narrower view, kept because it carries response statuses that
+  Resource Timing does not always expose. An empty list here means nothing on its own: bv.js is a
+  loader whose job is injecting script tags, and those go through neither. Read the Resource Timing
+  list instead.
 - **Console errors and warnings**, tagged by source:
   - `error` / `warn` — bv.js's own logging, including the both-attributes error
   - `uncaught` — an exception bv.js threw. A bare `Script error.` is cross-origin masking; see above
@@ -301,6 +310,8 @@ page starts parsing:
     through `console.error`, so without a `securitypolicyviolation` listener a CSP block looks like
     silence. The entry names the directive and the blocked URI; widen the policy with the matching
     `CSP_EXTRA_*` variable rather than guessing
+  - `injected-script` — a script bv.js added to the page. bv.js is a loader, so these are the modules
+    that do the real work, and an exception in one of them is what a masked `Script error.` usually is
 
 Work through the scopes in order:
 

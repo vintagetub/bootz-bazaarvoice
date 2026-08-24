@@ -247,13 +247,14 @@ test.describe("debug route: minimal mode and capture", () => {
     expect(attrs).toEqual(["data-bv-show"]);
   });
 
-  test("records blocked Bazaarvoice network calls", async ({ page }) => {
+  test("renders all three log blocks", async ({ page }) => {
     // The stub aborts bv.js, which is itself a failed request to bazaarvoice.com.
     await page.route("https://apps.bazaarvoice.com/**", (route) => route.abort());
     await page.goto("/debug/picker");
 
     const panel = page.getByLabel("Bazaarvoice integration diagnostics");
-    await expect(panel).toContainText("Bazaarvoice network calls");
+    await expect(panel).toContainText("Resource Timing");
+    await expect(panel).toContainText("fetch / XHR calls only");
     await expect(panel).toContainText("Console errors and warnings");
   });
 
@@ -284,10 +285,60 @@ test.describe("cross-origin unmasking and CSP capture", () => {
   test("crossorigin=1 sets the attribute on the bv.js tag", async ({ page }) => {
     await stubLoader(page);
     await page.goto("/debug/picker?crossorigin=1");
-    await expect(page.locator('script[src*="apps.bazaarvoice.com"]')).toHaveAttribute(
-      "crossorigin",
-      "anonymous",
-    );
+    // Injected by the capture script rather than rendered, so poll for it.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector("script[data-bv-loader]")?.getAttribute("crossorigin") ?? null,
+        ),
+      )
+      .toBe("anonymous");
+  });
+
+  test("crossorigin=all also arms forcing CORS onto injected scripts", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?crossorigin=all");
+
+    // Simulate what bv.js does: inject a child script from a Bazaarvoice host.
+    const applied = await page.evaluate(() => {
+      const child = document.createElement("script");
+      child.src = "https://apps.bazaarvoice.com/child-chunk.js";
+      document.head.appendChild(child);
+      return child.crossOrigin;
+    });
+    expect(applied).toBe("anonymous");
+
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    expect(captured.some((line) => line.startsWith("injected-script"))).toBe(true);
+  });
+
+  test("records injected Bazaarvoice scripts, which fetch/XHR wrapping cannot see", async ({
+    page,
+  }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker");
+
+    await page.evaluate(() => {
+      const child = document.createElement("script");
+      child.src = "https://apps.bazaarvoice.com/some-module.js";
+      document.head.appendChild(child);
+    });
+
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    expect(captured.some((line) => line.includes("some-module.js"))).toBe(true);
+    // And it must NOT show up in the fetch/XHR list, which is the whole point.
+    const net = await page.evaluate(() => window.__bvNet ?? []);
+    expect(net.some((line) => line.includes("some-module.js"))).toBe(false);
+  });
+
+  test("surfaces Resource Timing as the authoritative network view", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker");
+
+    const panel = page.getByLabel("Bazaarvoice integration diagnostics");
+    await expect(panel).toContainText("Resource Timing");
+    // The fetch/XHR block must warn against being read as "no network activity".
+    await expect(panel).toContainText("fetch / XHR calls only");
   });
 
   test("the consumer pages never set crossorigin", async ({ page }) => {
@@ -305,13 +356,18 @@ test.describe("cross-origin unmasking and CSP capture", () => {
 
   test("every page loads bv.js exactly once after moving it out of the layout", async ({ page }) => {
     await stubLoader(page);
-    for (const path of [...PICKER_PATHS, "/debug/picker"]) {
+    for (const path of PICKER_PATHS) {
       await page.goto(path);
       await expect(
         page.locator('script[src*="apps.bazaarvoice.com"]'),
         `${path} should have one loader`,
       ).toHaveCount(1);
     }
+    // The debug route injects it instead, but still exactly once.
+    await page.goto("/debug/picker");
+    await expect
+      .poll(() => page.locator("script[data-bv-loader]").count())
+      .toBe(1);
   });
 
   test("records a CSP refusal that console wrapping would miss", async ({ page }) => {

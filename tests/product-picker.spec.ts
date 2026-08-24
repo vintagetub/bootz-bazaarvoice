@@ -233,3 +233,49 @@ test.describe("debug route", () => {
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
   });
 });
+
+test.describe("debug route: minimal mode and capture", () => {
+  test("minimal=1 emits only data-bv-show, matching Bazaarvoice's bare example", async ({
+    page,
+  }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?minimal=1");
+
+    const attrs = await page.locator('[data-bv-show="product_picker"]').evaluate((node) =>
+      Array.from(node.attributes).map((a) => a.name),
+    );
+    expect(attrs).toEqual(["data-bv-show"]);
+  });
+
+  test("records blocked Bazaarvoice network calls", async ({ page }) => {
+    // The stub aborts bv.js, which is itself a failed request to bazaarvoice.com.
+    await page.route("https://apps.bazaarvoice.com/**", (route) => route.abort());
+    await page.goto("/debug/picker");
+
+    const panel = page.getByLabel("Bazaarvoice integration diagnostics");
+    await expect(panel).toContainText("Bazaarvoice network calls");
+    await expect(panel).toContainText("Console errors and warnings");
+  });
+
+  test("the capture hook is installed before bv.js could run", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker");
+
+    // Both buffers must exist even when nothing was captured, otherwise the
+    // panel cannot distinguish "no errors" from "not listening".
+    const installed = await page.evaluate(() => ({
+      log: Array.isArray(window.__bvLog),
+      net: Array.isArray(window.__bvNet),
+    }));
+    expect(installed).toEqual({ log: true, net: true });
+  });
+
+  test("capture is not installed on the production pages", async ({ page }) => {
+    await stubLoader(page);
+    for (const path of PICKER_PATHS) {
+      await page.goto(path);
+      const patched = await page.evaluate(() => window.__bvLog !== undefined);
+      expect(patched, `${path} must not monkey-patch console`).toBe(false);
+    }
+  });
+});

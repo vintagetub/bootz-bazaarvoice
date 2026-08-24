@@ -260,22 +260,30 @@ scope?" would otherwise be a redeploy to answer. This route renders per request 
 from the query string:
 
 ```
+/debug/picker?minimal=1              Bazaarvoice's bare documented example, nothing else
 /debug/picker?category=none          root category — every mapped product
 /debug/picker?category=Shower_Base   a specific category ExternalId
 /debug/picker?family=BZ-4832         a product family instead
 /debug/picker?inline=false           lightbox rather than in-page
 ```
 
-The comparison that isolates the cause:
+The page also shows two things devtools would otherwise be needed for, captured from the moment the
+page starts parsing:
 
-| `?category=none` | `?category=Shower_Base` | Conclusion |
-| --- | --- | --- |
-| empty | empty | Product Picker is not really enabled **for this deployment zone and locale**, or nothing in the catalog is category-mapped at all. The Style Editor toggle is per deployment zone — check it was set on `main_site` |
-| renders | empty | Product Picker works. The `Shower_Base` mapping is the problem — see the catalog section above |
-| renders | renders | Nothing is wrong; compare against the production page's baked config in `/api/health` |
+- **Bazaarvoice network calls** — every request bv.js makes to `bazaarvoice.com`, with its status. If
+  this list stays empty, bv.js never asked for products and the picker is failing before it fetches.
+  If a catalog request returns 200, the response is the authority on whether the category has
+  products.
+- **Console errors and warnings** — bv.js logs its own failures, including the both-attributes error.
 
-A "renders" result with `category=none` is also the fastest way to confirm the account side is
-healthy before spending time on the feed.
+Work through the scopes in order:
+
+| Result | Conclusion |
+| --- | --- |
+| `?minimal=1` renders, fuller markup does not | One of our other attributes is at fault. `data-bv-campaign-id` is the candidate — Bazaarvoice's docs suggest campaign IDs may need to exist on the account, so try a known-good one or drop it |
+| `?minimal=1` and `?category=none` both empty, **no network calls recorded** | bv.js is not initialising Product Picker at all. Style Editor toggle is per **deployment zone** and per locale — confirm it was saved against `main_site` / `en_US`, not another zone |
+| `?category=none` renders, `?category=Shower_Base` empty | Product Picker works. The `Shower_Base` mapping is the problem — see the catalog section above |
+| Network calls recorded but everything empty | Read the response of the catalog request. It says directly whether products came back |
 
 If `?category=none` is the configuration you want in production, set
 `BV_PICKER_CATEGORY_ID=none` (also accepts `all`, `root`, `*`) and the attribute is omitted on the

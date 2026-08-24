@@ -15,6 +15,10 @@ declare global {
      * that adding one later is a typed change rather than a cast.
      */
     bvCallback?: (BV: BvGlobal) => void;
+    /** Console/error buffer installed by BvErrorCapture on the debug route. */
+    __bvLog?: string[];
+    /** Bazaarvoice network calls recorded by BvErrorCapture on the debug route. */
+    __bvNet?: string[];
   }
 }
 

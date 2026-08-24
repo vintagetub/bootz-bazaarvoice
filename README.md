@@ -85,6 +85,40 @@ Entries carry `allowSubdomain`, so an entry for `bootz.com` with that flag cover
 serving this app from a `bootz.com` subdomain needs no Bazaarvoice change at all.** A
 `*.vercel.app` hostname has to be added explicitly, and only the exact one that was added works.
 
+### Testing on an allowlisted host, without touching production
+
+The allowlist entry for `bootz.com` has `allowSubdomain: true`, and it is **identical in both the
+staging and production deployment configs**. So any `bootz.com` subdomain passes the check —
+including a throwaway test one that has nothing to do with the live site. Three ways to use that,
+cheapest first.
+
+**1. /etc/hosts, for local development.** No DNS, no Bazaarvoice request, works immediately:
+
+```
+127.0.0.1  bv-test.bootz.com
+```
+
+Then `npm run dev` and open `http://bv-test.bootz.com:3000`. bv.js reads
+`window.location.hostname`, sees an allowlisted host, and proceeds. `allowedDevOrigins` in
+`next.config.ts` already permits this hostname.
+
+Caveat: this serves over plain HTTP. Bazaarvoice's device fingerprinting and any `Secure` cookies
+may not behave, so treat it as "does the picker render at all", not as a full submission test. If the
+CSP gets in the way locally, set `CSP_MODE=off` in `.env.local`.
+
+**2. A test subdomain pointed at this Vercel project.** `bv-test.bootz.com` or
+`reviews-test.bootz.com` — add it under Vercel → Settings → Domains, then a CNAME wherever
+`bootz.com` DNS lives. Serves over HTTPS, so submissions work properly. This is a separate Vercel
+project from any real Bootz site, so nothing customer-facing is involved. Pair it with
+`BV_ENVIRONMENT=staging` to keep test submissions out of the production review pipeline.
+
+**3. `bootz-v3.vercel.app`,** which is already allowlisted. If that is an existing Bootz Vercel
+project, moving the alias needs no DNS work at all — but check what it is currently serving first.
+
+Note that the allowlist is checked against the hostname alone, so a Vercel *preview* deployment on
+its generated `*.vercel.app` URL will always fail it. Assign a `bootz.com` subdomain to the branch
+if previews need to work.
+
 ### Checking what the bundle actually supports
 
 `bv.js` is generated per deployment zone and carries the list of apps that zone supports. Because it

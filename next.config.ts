@@ -23,6 +23,17 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
 
+  /**
+   * Lets `next dev` serve requests whose Host header is a bootz.com subdomain.
+   *
+   * bv.js checks `window.location.hostname` against the Bazaarvoice allowlist,
+   * which contains bootz.com with allowSubdomain. So mapping a test subdomain to
+   * 127.0.0.1 in /etc/hosts makes local development pass that check without any
+   * DNS change or Bazaarvoice request. See README ("Testing on an allowlisted
+   * host").
+   */
+  allowedDevOrigins: ["bv-test.bootz.com", "reviews-test.bootz.com"],
+
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

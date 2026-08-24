@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BvDiagnostics } from "@/components/BvDiagnostics";
+import { BvErrorCapture } from "@/components/BvErrorCapture";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
 import { getBvConfig, getPickerConfig, isRootCategory, isValidExternalId } from "@/lib/config";
 
@@ -80,16 +81,29 @@ export default async function DebugPickerPage({
   const inline = first(params.inline) !== "false";
   const preventClose = first(params.preventClose) === "true";
 
-  const applied: [string, string][] = [
-    ["data-bv-campaign-id", defaults.campaignId],
-    ["data-bv-category-id", category ?? "(not set — root category)"],
-    ["data-bv-family-product-id", family ?? "(not set)"],
-    ["data-bv-inline", String(inline)],
-    ["data-bv-prevent-close", String(preventClose)],
-  ];
+  /**
+   * `?minimal=1` emits Bazaarvoice's documented root-category example and
+   * nothing else: `<div data-bv-show="product_picker"></div>`. If that renders
+   * when the fuller markup does not, one of our other attributes is at fault —
+   * `data-bv-campaign-id` being the candidate, since Bazaarvoice's docs hint
+   * that campaign IDs may need to exist on the account.
+   */
+  const minimal = first(params.minimal) === "1";
+
+  const applied: [string, string][] = minimal
+    ? [["data-bv-show", "product_picker (and nothing else)"]]
+    : [
+        ["data-bv-campaign-id", defaults.campaignId],
+        ["data-bv-category-id", category ?? "(not set — root category)"],
+        ["data-bv-family-product-id", family ?? "(not set)"],
+        ["data-bv-inline", String(inline)],
+        ["data-bv-prevent-close", String(preventClose)],
+      ];
 
   return (
     <>
+      {/* First thing in the body, so it is installed before bv.js initialises. */}
+      <BvErrorCapture />
       <SiteHeader />
       <main className="page">
         <h1 className="page__title">Product Picker debug</h1>
@@ -111,10 +125,9 @@ export default async function DebugPickerPage({
             <p className="diagnostics__hint">{notes.join(" ")}</p>
           ) : null}
           <p className="diagnostics__hint">
-            Compare <code>?category=none</code> with <code>?category=Shower_Base</code>. Renders with
-            neither → Product Picker is not enabled for this deployment zone, or nothing in the
-            catalog is category-mapped. Renders with <code>none</code> only → the{" "}
-            <code>Shower_Base</code> mapping is missing.
+            Try in order: <code>?minimal=1</code> (Bazaarvoice&apos;s bare documented example),{" "}
+            <code>?category=none</code> (root category), then <code>?category=Shower_Base</code>.
+            The network and console blocks below show what bv.js actually did.
           </p>
         </section>
 
@@ -125,14 +138,18 @@ export default async function DebugPickerPage({
           </div>
         ) : (
           <div className="bv-slot">
-            <div
-              data-bv-show="product_picker"
-              data-bv-campaign-id={defaults.campaignId}
-              {...(category !== null ? { "data-bv-category-id": category } : {})}
-              {...(family !== null ? { "data-bv-family-product-id": family } : {})}
-              data-bv-inline={String(inline)}
-              data-bv-prevent-close={String(preventClose)}
-            />
+            {minimal ? (
+              <div data-bv-show="product_picker" />
+            ) : (
+              <div
+                data-bv-show="product_picker"
+                data-bv-campaign-id={defaults.campaignId}
+                {...(category !== null ? { "data-bv-category-id": category } : {})}
+                {...(family !== null ? { "data-bv-family-product-id": family } : {})}
+                data-bv-inline={String(inline)}
+                data-bv-prevent-close={String(preventClose)}
+              />
+            )}
           </div>
         )}
 

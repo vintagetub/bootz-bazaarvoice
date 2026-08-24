@@ -12,6 +12,9 @@ interface Snapshot {
   containerFound: string;
   containerPopulated: string;
   pickerAttributes: string;
+  /** Populated only on the debug route, where BvErrorCapture is installed. */
+  consoleLog: string[];
+  network: string[];
 }
 
 /** Reads the data-bv-* attributes back off the DOM, not the server config. */
@@ -76,6 +79,8 @@ export function BvDiagnostics({
       setSnapshot({
         bvGlobal: window.BV ? "window.BV is present" : "window.BV not set yet",
         pickerAttributes: describePickerAttributes(container),
+        consoleLog: [...(window.__bvLog ?? [])],
+        network: [...(window.__bvNet ?? [])],
         ...readContainer(container),
       });
     };
@@ -116,12 +121,50 @@ export function BvDiagnostics({
           </div>
         ))}
       </dl>
-      {forceVisible ? null : (
+      {forceVisible ? (
+        <>
+          <LogBlock
+            title="Bazaarvoice network calls"
+            empty="None recorded. If this stays empty, bv.js never asked Bazaarvoice for products — the picker is failing before it fetches."
+            lines={snapshot.network}
+          />
+          <LogBlock
+            title="Console errors and warnings"
+            empty="None recorded."
+            lines={snapshot.consoleLog}
+          />
+        </>
+      ) : (
         <p className="diagnostics__hint">
           Visible because <code>?{DEBUG_FLAG}=1</code> is in the URL. Remove it to see the consumer
           view.
         </p>
       )}
     </section>
+  );
+}
+
+function LogBlock({
+  title,
+  empty,
+  lines,
+}: {
+  title: string;
+  empty: string;
+  lines: string[];
+}) {
+  return (
+    <div className="diagnostics__log">
+      <h3 className="diagnostics__title">{title}</h3>
+      {lines.length === 0 ? (
+        <p className="diagnostics__hint">{empty}</p>
+      ) : (
+        <ol className="diagnostics__loglist">
+          {lines.map((line, index) => (
+            <li key={`${index}-${line.slice(0, 40)}`}>{line}</li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }

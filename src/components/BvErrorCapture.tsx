@@ -13,12 +13,21 @@ import { getBvConfig } from "@/lib/config";
  * could otherwise let bv.js execute first — the same ordering hazard that
  * applied to `window.bvCallback`. Injecting last makes the order unconditional.
  */
+export interface BvUiCall {
+  campaignId: string;
+  categoryId: string | null;
+  familyProductId: string | null;
+  inline: boolean;
+  preventClose: boolean;
+}
+
 function buildScript(options: {
   loaderUrl: string;
   crossOrigin: boolean;
   forceCrossOriginOnInjected: boolean;
+  uiCall: BvUiCall | null;
 }): string {
-  const { loaderUrl, crossOrigin, forceCrossOriginOnInjected } = options;
+  const { loaderUrl, crossOrigin, forceCrossOriginOnInjected, uiCall } = options;
 
   return `(function(){
 if(window.__bvLog){return;}
@@ -27,6 +36,7 @@ var net=window.__bvNet=[];
 var SRC=${JSON.stringify(loaderUrl).replace(/</g, "\\u003c")};
 var CORS=${crossOrigin ? "true" : "false"};
 var FORCE_CORS_ON_INJECTED=${forceCrossOriginOnInjected ? "true" : "false"};
+var UI_CALL=${uiCall ? JSON.stringify(uiCall).replace(/</g, "\\u003c") : "null"};
 function describe(value){
 try{
 if(value instanceof Error){return value.message+(value.stack?" | "+String(value.stack).split("\\n").slice(0,3).join(" / "):"");}
@@ -107,6 +117,35 @@ var origAppend=Node.prototype.appendChild;
 Node.prototype.appendChild=function(node){handleInsert(node);return origAppend.apply(this,arguments);};
 var origInsert=Node.prototype.insertBefore;
 Node.prototype.insertBefore=function(node){handleInsert(node);return origInsert.apply(this,arguments);};
+/* The programmatic path: BV.ui("rr","submit_generic",...). Worth trying when
+   the declarative data-bv-show="product_picker" container is not registered in
+   this deployment's bundle, since the BV.ui implementation may still be present
+   inside swat-submission.
+
+   It is also the only way to read the real error. CORS masks *uncaught* errors
+   only — an exception caught in our own try/catch exposes its message and stack
+   whatever the script's origin. */
+if(UI_CALL){
+window.bvCallback=function(BV){
+try{
+if(!BV){record("bv-ui",["bvCallback ran but BV was falsy"]);return;}
+if(typeof BV.ui!=="function"){
+record("bv-ui",["BV.ui is not a function — this deployment does not expose the programmatic API"]);
+return;
+}
+var opts={campaignId:UI_CALL.campaignId,preventClose:UI_CALL.preventClose,inline:UI_CALL.inline};
+if(UI_CALL.categoryId){opts.categoryId=UI_CALL.categoryId;}
+if(UI_CALL.familyProductId){opts.familyProductId=UI_CALL.familyProductId;}
+record("bv-ui",["calling BV.ui('rr','submit_generic',"+JSON.stringify(opts)+")"]);
+BV.ui("rr","submit_generic",opts);
+record("bv-ui",["BV.ui returned without throwing"]);
+}catch(error){
+/* The payoff: a caught error is fully readable. */
+record("bv-ui-threw",[error]);
+}
+};
+record("bv-ui",["window.bvCallback installed, waiting for bv.js"]);
+}
 /* Now that everything is watching, load bv.js. */
 var loader=document.createElement("script");
 loader.async=true;
@@ -120,9 +159,12 @@ loader.setAttribute("data-bv-loader","1");
 export function BvErrorCapture({
   crossOrigin = false,
   forceCrossOriginOnInjected = false,
+  uiCall = null,
 }: {
   crossOrigin?: boolean;
   forceCrossOriginOnInjected?: boolean;
+  /** When set, calls BV.ui instead of relying on a data-bv-show container. */
+  uiCall?: BvUiCall | null;
 }) {
   const { loaderUrl } = getBvConfig();
 
@@ -133,7 +175,7 @@ export function BvErrorCapture({
       <link rel="preconnect" href="https://apps.bazaarvoice.com" />
       <script
         dangerouslySetInnerHTML={{
-          __html: buildScript({ loaderUrl, crossOrigin, forceCrossOriginOnInjected }),
+          __html: buildScript({ loaderUrl, crossOrigin, forceCrossOriginOnInjected, uiCall }),
         }}
       />
     </>

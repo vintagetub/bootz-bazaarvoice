@@ -104,7 +104,29 @@ export default async function DebugPickerPage({
    */
   const forceCrossOriginOnInjected = crossOriginParam === "all";
 
-  const applied: [string, string][] = minimal
+  /**
+   * `?mode=ui` uses Bazaarvoice's programmatic entry point,
+   * BV.ui("rr","submit_generic",...), instead of a data-bv-show container.
+   *
+   * Two reasons it is worth trying. The declarative container depends on
+   * `product_picker` being a registered app in this deployment's bv.js bundle;
+   * BV.ui may reach the same implementation inside swat-submission without that
+   * registration. And because we make the call ourselves, we can wrap it —
+   * CORS masks uncaught errors only, so a caught exception gives up its real
+   * message and stack whatever the script's origin.
+   */
+  const uiMode = first(params.mode) === "ui";
+
+  const applied: [string, string][] = uiMode
+    ? [
+        ["entry point", 'BV.ui("rr","submit_generic",{...}) — no container element'],
+        ["campaignId", defaults.campaignId],
+        ["categoryId", category ?? "(omitted — root category)"],
+        ["familyProductId", family ?? "(omitted)"],
+        ["inline", String(inline)],
+        ["preventClose", String(preventClose)],
+      ]
+    : minimal
     ? [["data-bv-show", "product_picker (and nothing else)"]]
     : [
         ["data-bv-campaign-id", defaults.campaignId],
@@ -124,6 +146,17 @@ export default async function DebugPickerPage({
       <BvErrorCapture
         crossOrigin={crossOrigin}
         forceCrossOriginOnInjected={forceCrossOriginOnInjected}
+        uiCall={
+          uiMode
+            ? {
+                campaignId: defaults.campaignId,
+                categoryId: category,
+                familyProductId: family,
+                inline,
+                preventClose,
+              }
+            : null
+        }
       />
       <SiteHeader />
       <main className="page">
@@ -146,7 +179,8 @@ export default async function DebugPickerPage({
             <p className="diagnostics__hint">{notes.join(" ")}</p>
           ) : null}
           <p className="diagnostics__hint">
-            Scopes: <code>?minimal=1</code> (Bazaarvoice&apos;s bare documented example),{" "}
+            Try <code>?mode=ui</code> first: it calls BV.ui directly and reports the real error
+            message even when CORS masks it. Scopes:{" "}<code>?minimal=1</code> (Bazaarvoice&apos;s bare documented example),{" "}
             <code>?category=none</code> (root category), <code>?category=Shower_Base</code>. Add{" "}
             <code>&amp;crossorigin=1</code> to unmask an error thrown by bv.js itself, or{" "}
             <code>&amp;crossorigin=all</code> to also unmask errors thrown inside the scripts bv.js
@@ -171,7 +205,11 @@ export default async function DebugPickerPage({
           </div>
         ) : (
           <div className="bv-slot">
-            {minimal ? (
+            {uiMode ? (
+              /* BV.ui builds its own element; a second container would be a
+                 duplicate app on the page. */
+              <div id="bv-ui-target" />
+            ) : minimal ? (
               <div data-bv-show="product_picker" />
             ) : (
               <div

@@ -3,10 +3,12 @@ import { MpsHostPage } from "@/components/MpsHostPage";
 import { getBrandConfig } from "@/lib/config";
 
 /**
- * The MPS host page at its explicit path.
+ * The MPS host page at the site root.
  *
- * Serves the same body as `/` so either URL can be entered in the Bazaarvoice
- * portal. Both are real pages, not redirects — see MpsHostPage.
+ * The Bazaarvoice portal's "MPS host URL" field is configured as the bare
+ * domain, so the root has to serve the form itself rather than redirect to
+ * `/reviews/submit` — see MpsHostPage for why a redirect is actively harmful
+ * here.
  */
 export const dynamic = "force-static";
 
@@ -15,6 +17,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function SubmitReviewPage() {
+export default function RootPage() {
   return <MpsHostPage />;
 }

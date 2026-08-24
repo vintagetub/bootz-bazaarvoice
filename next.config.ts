@@ -28,17 +28,21 @@ const nextConfig: NextConfig = {
   },
 
   /**
-   * Bazaarvoice auto-redirects existing Review Request Email links to this
-   * domain and the form will not render without the `user` and `products`
-   * query parameters, so every alias has to land on the real page with its
-   * query string intact. Next.js forwards query parameters on redirects when
-   * the destination declares none of its own, which is the case here.
+   * Deliberately NO redirect for the MPS host page.
+   *
+   * `/` and `/reviews/submit` are both real pages rendering the same body, so
+   * whichever is entered in the Bazaarvoice portal serves the form directly.
+   * Redirecting would re-encode the query string — `products=A,B,C` becomes
+   * `products=A%2CB%2CC` — and the form renders nothing if bv.js reads those
+   * values without decoding them.
+   *
+   * The aliases below are convenience only; nothing in Bazaarvoice points at
+   * them, so the re-encoding does not matter on these paths.
    */
   async redirects() {
     return [
-      { source: "/", destination: "/reviews/submit", permanent: false },
-      { source: "/reviews", destination: "/reviews/submit", permanent: false },
-      { source: "/submit", destination: "/reviews/submit", permanent: false },
+      { source: "/reviews", destination: "/", permanent: false },
+      { source: "/submit", destination: "/", permanent: false },
       // Product Picker (QR) entry point lives at the short /register path.
       { source: "/reviews/register", destination: "/register", permanent: false },
     ];

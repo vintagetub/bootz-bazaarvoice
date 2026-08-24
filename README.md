@@ -176,25 +176,33 @@ the conflict. A test asserts exactly one of the two attributes is ever on the el
 
 ### Query parameters are load-bearing
 
-The form renders **nothing** if `user` and `products` are missing from the URL. Any redirect or
-rewrite that drops the query string silently breaks the whole flow.
+The form renders **nothing** if `user` and `products` are missing from the URL. This is documented
+Bazaarvoice behaviour, not a bug in this app — opening the host URL directly in a browser will
+always show an empty page. Use `?bvDebug=1` to confirm which parameters arrived.
 
-`/`, `/reviews`, and `/submit` all redirect to `/reviews/submit` with the query string preserved, so
-a link that lands slightly off target still works. There is a test for each. If you add a redirect,
-a proxy rule, or a CDN rewrite in front of this app, verify the query string survives it.
+**The MPS host page is served at both `/` and `/reviews/submit` as real pages, never a redirect.**
+That is deliberate. Next.js re-encodes the query string when it redirects, so a Bazaarvoice link
+carrying `products=A,B,C` arrives as `products=A%2CB%2CC`. Anything in bv.js that reads the raw
+query string rather than decoding it would then see one product ID named `A%2CB%2CC` and render
+nothing, with no error to go on. Tests assert both paths return 200 and that `%2C` never appears in
+the query string.
+
+`/reviews` and `/submit` still redirect, as conveniences that nothing in Bazaarvoice points at. If
+you add a redirect, proxy rule, or CDN rewrite in front of the host page, check the **Raw query
+string** row in the diagnostics panel afterwards.
 
 ### Routes
 
 | Route | Purpose |
 | --- | --- |
-| `/reviews/submit` | The MPS host page. **This is the URL that goes in the Bazaarvoice portal.** |
+| `/` | The MPS host page. **Either this or `/reviews/submit` goes in the Bazaarvoice portal.** |
+| `/reviews/submit` | The same page, at an explicit path |
 | `/register` | Product Picker page. **This is the URL the QR codes encode.** |
 | `/thank-you` | Landing page for the `mpsClose` redirect |
 | `/api/health` | Uptime probe. `200` when configured, `503` with a reason when not |
 | `/robots.txt` | Disallows everything — these URLs carry consumer tokens |
 
-`/`, `/reviews`, and `/submit` redirect to `/reviews/submit`; `/reviews/register` redirects to
-`/register`.
+`/reviews` and `/submit` redirect to `/`; `/reviews/register` redirects to `/register`.
 
 ---
 
@@ -289,12 +297,21 @@ not match `@playwright/test`, set `PLAYWRIGHT_CHROMIUM_PATH` to its binary.
 
 ### Diagnostics
 
-Append `?bvDebug=1` to the submit URL for a panel showing the resolved bv.js URL, whether
-`window.bvCallback` and `window.BV` exist, whether the container has been populated, and which
-parameters arrived. Use it for the staging test step in Bazaarvoice's checklist.
+Append `?bvDebug=1` to the host URL for a panel showing the resolved bv.js URL, whether
+`window.bvCallback` and `window.BV` exist, whether the container has been populated, the raw query
+string, and which parameters arrived. Use it for the staging test step in Bazaarvoice's checklist.
 
-It never prints the `user` token in full — only its length and first few characters — because that
-token carries consumer PII.
+It never prints the `user` token — only its length and first few characters, and the value is
+redacted out of the raw query string — because that token carries consumer PII.
+
+**Reading the panel when the form is blank:**
+
+| Panel says | Meaning |
+| --- | --- |
+| `window.BV not set yet` after a few seconds | bv.js did not load or execute. Check the domain is on the Bazaarvoice allowlist, the browser console for CSP violations, and that the bv.js URL returns 200 |
+| `window.BV is present`, container empty, `user param missing` | Expected. There is nothing to render without a real submission link — this is what opening the URL directly always looks like |
+| `window.BV is present`, container empty, both params present | Our side is complete and Bazaarvoice is declining to render. The cause is account-side: form configuration, or an expired/invalid token. Not a code problem |
+| `%2C` in the raw query string | Something re-encoded the `products` list. Find the redirect or rewrite doing it |
 
 ---
 

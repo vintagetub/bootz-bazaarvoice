@@ -165,15 +165,41 @@ test.describe("diagnostics panel", () => {
 });
 
 test.describe("routing", () => {
-  for (const alias of ["/", "/reviews", "/submit"]) {
-    test(`${alias} lands on the form with query parameters intact`, async ({ page }) => {
+  /**
+   * Both of these are entered in the Bazaarvoice "MPS host URL" field by
+   * different people, so both must serve the form without redirecting.
+   */
+  for (const path of ["/", SUBMIT]) {
+    test(`${path} serves the form directly, with no redirect`, async ({ page }) => {
       await stubLoader(page);
-      await page.goto(`${alias}?user=${USER}&products=${PRODUCTS}`);
+      const target = `${path}?user=${USER}&products=${PRODUCTS}`;
+      const response = await page.goto(target);
 
-      const url = new URL(page.url());
-      expect(url.pathname).toBe(SUBMIT);
-      expect(url.searchParams.get("user")).toBe(USER);
-      expect(url.searchParams.get("products")).toBe(PRODUCTS);
+      // A redirect would re-encode the commas in `products`, which can stop
+      // bv.js seeing the product list at all.
+      expect(response?.status()).toBe(200);
+      expect(page.url()).toContain(target);
+      expect(new URL(page.url()).pathname).toBe(path);
+      await expect(page.locator('[data-bv-show="multi_submission"]')).toHaveCount(1);
+    });
+
+    test(`${path} preserves the products list uncorrupted`, async ({ page }) => {
+      await stubLoader(page);
+      await page.goto(`${path}?user=${USER}&products=${PRODUCTS}`);
+
+      // Assert on the raw query string, not the parsed value: URLSearchParams
+      // would decode %2C back to a comma and hide the corruption.
+      const raw = await page.evaluate(() => window.location.search);
+      expect(raw).toContain(`products=${PRODUCTS}`);
+      expect(raw).not.toContain("%2C");
+    });
+  }
+
+  for (const alias of ["/reviews", "/submit"]) {
+    test(`${alias} redirects to the form`, async ({ page }) => {
+      await stubLoader(page);
+      await page.goto(`${alias}?user=${USER}`);
+      expect(new URL(page.url()).pathname).toBe("/");
     });
   }
 });

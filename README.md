@@ -265,7 +265,25 @@ from the query string:
 /debug/picker?category=Shower_Base   a specific category ExternalId
 /debug/picker?family=BZ-4832         a product family instead
 /debug/picker?inline=false           lightbox rather than in-page
+/debug/picker?crossorigin=1          unmask a bare "Script error." — see below
 ```
+
+### Unmasking "Script error."
+
+An exception thrown inside a cross-origin script reaches `window.onerror` as a bare
+`Script error.` with no message, file, or line. The browser withholds the detail unless the script
+was fetched with CORS *and* the server sends `Access-Control-Allow-Origin`.
+
+`?crossorigin=1` loads bv.js with `crossorigin="anonymous"` so the real message comes through. Two
+outcomes:
+
+- **The error text appears** — that is bv.js's own failure, and it is what a Bazaarvoice support
+  ticket needs.
+- **bv.js stops loading entirely** (`window.BV not set`, plus a `resource-failed` entry) — their CDN
+  does not send the header, and the error cannot be unmasked this way.
+
+The consumer pages never set it: a CORS fetch fails outright when the header is absent, which would
+break the picker for everyone. A test asserts that.
 
 The page also shows two things devtools would otherwise be needed for, captured from the moment the
 page starts parsing:
@@ -274,7 +292,15 @@ page starts parsing:
   this list stays empty, bv.js never asked for products and the picker is failing before it fetches.
   If a catalog request returns 200, the response is the authority on whether the category has
   products.
-- **Console errors and warnings** — bv.js logs its own failures, including the both-attributes error.
+- **Console errors and warnings**, tagged by source:
+  - `error` / `warn` — bv.js's own logging, including the both-attributes error
+  - `uncaught` — an exception bv.js threw. A bare `Script error.` is cross-origin masking; see above
+  - `resource-failed` — a script, image, or stylesheet that failed to load. Resource errors do not
+    bubble, so this needs a capturing listener the ordinary one would miss
+  - `csp-blocked` — a Content-Security-Policy refusal. The browser logs these itself rather than
+    through `console.error`, so without a `securitypolicyviolation` listener a CSP block looks like
+    silence. The entry names the directive and the blocked URI; widen the policy with the matching
+    `CSP_EXTRA_*` variable rather than guessing
 
 Work through the scopes in order:
 

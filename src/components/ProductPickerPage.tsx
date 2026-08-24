@@ -1,3 +1,4 @@
+import { BazaarvoiceLoader } from "@/components/BazaarvoiceLoader";
 import { BvDiagnostics } from "@/components/BvDiagnostics";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
 import { getBrandConfig, getBvConfig, getPickerConfig } from "@/lib/config";
@@ -28,6 +29,7 @@ export function ProductPickerPage() {
 
   return (
     <>
+      <BazaarvoiceLoader />
       <SiteHeader />
       <main className="page">
         <h1 className="page__title">Review your {brand.name} product</h1>

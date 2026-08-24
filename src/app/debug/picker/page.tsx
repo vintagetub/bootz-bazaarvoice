@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BazaarvoiceLoader } from "@/components/BazaarvoiceLoader";
 import { BvDiagnostics } from "@/components/BvDiagnostics";
 import { BvErrorCapture } from "@/components/BvErrorCapture";
 import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
@@ -90,6 +91,13 @@ export default async function DebugPickerPage({
    */
   const minimal = first(params.minimal) === "1";
 
+  /**
+   * `?crossorigin=1` unmasks "Script error." — see BazaarvoiceLoader. If bv.js
+   * stops loading entirely with this set, Bazaarvoice's CDN does not send
+   * Access-Control-Allow-Origin and the real message cannot be read this way.
+   */
+  const crossOrigin = first(params.crossorigin) === "1";
+
   const applied: [string, string][] = minimal
     ? [["data-bv-show", "product_picker (and nothing else)"]]
     : [
@@ -104,6 +112,7 @@ export default async function DebugPickerPage({
     <>
       {/* First thing in the body, so it is installed before bv.js initialises. */}
       <BvErrorCapture />
+      <BazaarvoiceLoader crossOrigin={crossOrigin} />
       <SiteHeader />
       <main className="page">
         <h1 className="page__title">Product Picker debug</h1>
@@ -125,10 +134,18 @@ export default async function DebugPickerPage({
             <p className="diagnostics__hint">{notes.join(" ")}</p>
           ) : null}
           <p className="diagnostics__hint">
-            Try in order: <code>?minimal=1</code> (Bazaarvoice&apos;s bare documented example),{" "}
-            <code>?category=none</code> (root category), then <code>?category=Shower_Base</code>.
-            The network and console blocks below show what bv.js actually did.
+            Scopes: <code>?minimal=1</code> (Bazaarvoice&apos;s bare documented example),{" "}
+            <code>?category=none</code> (root category), <code>?category=Shower_Base</code>. Add{" "}
+            <code>&amp;crossorigin=1</code> to turn a bare &ldquo;Script error.&rdquo; into the real
+            message from bv.js. The blocks below show what bv.js actually did.
           </p>
+          {crossOrigin ? (
+            <p className="diagnostics__hint">
+              <strong>crossorigin=1 is on.</strong> If &ldquo;Bazaarvoice global&rdquo; now reads{" "}
+              <em>not set</em> and a resource-failed entry appears, bv.js is not served with CORS
+              headers and the error cannot be unmasked this way.
+            </p>
+          ) : null}
         </section>
 
         {loaderUrl === null ? (

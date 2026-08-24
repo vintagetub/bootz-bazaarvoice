@@ -16,6 +16,18 @@ const IOVATION = ["https://mpsnare.iesnare.com", "wss://mpsnare.iesnare.com"];
 /** OneTrust, when the Bazaarvoice cookie-consent integration is enabled. */
 const ONETRUST = "https://cdn.cookielaw.org";
 
+/**
+ * Bazaarvoice's published `script-src-elem` list also includes
+ * `edge.curalate.com`, `uk.cdn-net.com`, and `six.cdn-net.com`. They are left
+ * out here because they belong to products we do not use (Curalate is
+ * Contextual Commerce), and a policy should not permit hosts a page has no
+ * reason to contact.
+ *
+ * If a `csp-blocked` entry ever names one of them, add it via
+ * CSP_EXTRA_SCRIPT_SRC rather than guessing — the diagnostics capture on
+ * /debug/picker reports the exact directive and blocked URI.
+ */
+
 function envList(name: string): string[] {
   const raw = process.env[name];
   if (!raw) return [];

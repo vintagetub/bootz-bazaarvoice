@@ -34,6 +34,22 @@ console.warn=function(){record("warn",arguments);return origWarn.apply(console,a
 window.addEventListener("error",function(event){
 record("uncaught",[event.message+(event.filename?" @ "+event.filename:"")]);
 });
+/* Resource load failures do not bubble, so they need a capturing listener.
+   This is what catches bv.js itself failing to fetch. */
+window.addEventListener("error",function(event){
+var target=event.target;
+if(target&&target!==window&&(target.src||target.href)){
+record("resource-failed",[(target.tagName||"?")+" "+(target.src||target.href)]);
+}
+},true);
+/* Content-Security-Policy refusals are logged by the browser directly, not
+   through console.error, so the wrapper above never sees them. Without this
+   listener a CSP block looks like silence. */
+document.addEventListener("securitypolicyviolation",function(event){
+record("csp-blocked",[
+(event.violatedDirective||"?")+" blocked "+(event.blockedURI||"(inline)"),
+]);
+});
 window.addEventListener("unhandledrejection",function(event){
 var reason=event.reason;
 record("rejection",[describe(reason&&reason.message?reason.message:reason)]);

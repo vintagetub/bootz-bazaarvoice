@@ -279,3 +279,62 @@ test.describe("debug route: minimal mode and capture", () => {
     }
   });
 });
+
+test.describe("cross-origin unmasking and CSP capture", () => {
+  test("crossorigin=1 sets the attribute on the bv.js tag", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker?crossorigin=1");
+    await expect(page.locator('script[src*="apps.bazaarvoice.com"]')).toHaveAttribute(
+      "crossorigin",
+      "anonymous",
+    );
+  });
+
+  test("the consumer pages never set crossorigin", async ({ page }) => {
+    await stubLoader(page);
+    for (const path of PICKER_PATHS) {
+      await page.goto(path);
+      // A CORS fetch would fail outright if Bazaarvoice omits the header, so the
+      // consumer pages must not opt into it.
+      const attr = await page
+        .locator('script[src*="apps.bazaarvoice.com"]')
+        .getAttribute("crossorigin");
+      expect(attr, `${path} must not set crossorigin`).toBeNull();
+    }
+  });
+
+  test("every page loads bv.js exactly once after moving it out of the layout", async ({ page }) => {
+    await stubLoader(page);
+    for (const path of [...PICKER_PATHS, "/debug/picker"]) {
+      await page.goto(path);
+      await expect(
+        page.locator('script[src*="apps.bazaarvoice.com"]'),
+        `${path} should have one loader`,
+      ).toHaveCount(1);
+    }
+  });
+
+  test("records a CSP refusal that console wrapping would miss", async ({ page }) => {
+    await page.goto("/debug/picker");
+    // Provoke a violation: connect-src does not allow this origin.
+    await page.evaluate(() => {
+      const image = document.createElement("img");
+      image.src = "https://example.com/definitely-blocked.png";
+      document.body.appendChild(image);
+    });
+    await page.waitForTimeout(500);
+
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    expect(captured.some((line) => line.startsWith("csp-blocked"))).toBe(true);
+  });
+
+  test("records a failed resource load", async ({ page }) => {
+    await stubLoader(page);
+    await page.goto("/debug/picker");
+    await page.waitForTimeout(500);
+
+    // bv.js was aborted by the stub, which is a resource failure.
+    const captured = await page.evaluate(() => window.__bvLog ?? []);
+    expect(captured.some((line) => line.includes("resource-failed"))).toBe(true);
+  });
+});

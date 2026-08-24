@@ -1,0 +1,4 @@
+# Review-submission host. Nothing here is useful to a crawler, and the URLs
+# carry per-consumer tokens, so keep the whole origin out of search indexes.
+User-agent: *
+Disallow: /

@@ -8,6 +8,7 @@ export const DEBUG_FLAG = "bvDebug";
 
 interface Snapshot {
   paramNames: string[];
+  rawQuery: string;
   userParam: string;
   productsParam: string;
   bvGlobal: string;
@@ -22,6 +23,20 @@ function describeToken(value: string | null): string {
   if (value === null) return "missing";
   if (value === "") return "present but empty";
   return `present (${value.length} chars, starts "${value.slice(0, 8)}…")`;
+}
+
+/**
+ * Shows the query string as it actually arrived, so percent-encoding
+ * introduced upstream is visible — `products=A%2CB%2CC` instead of
+ * `products=A,B,C` is otherwise a silent failure. The `user` value is redacted
+ * because it carries consumer PII; everything else is left byte-for-byte.
+ */
+function redactRawQuery(search: string): string {
+  if (!search) return "(none)";
+  return search.replace(
+    /([?&]user=)([^&]*)/gi,
+    (_match, prefix: string, value: string) => `${prefix}[${value.length} chars redacted]`,
+  );
 }
 
 function describeProducts(value: string | null): string {
@@ -73,6 +88,7 @@ export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
       const container = document.querySelector('[data-bv-show="multi_submission"]');
       setSnapshot({
         paramNames: [...params.keys()].filter((name) => name !== DEBUG_FLAG),
+        rawQuery: redactRawQuery(window.location.search),
         userParam: describeToken(params.get("user")),
         productsParam: describeProducts(params.get("products")),
         bvGlobal: window.BV ? "window.BV is present" : "window.BV not set yet",
@@ -108,6 +124,8 @@ export function MpsDiagnostics({ loaderUrl }: { loaderUrl: string | null }) {
     ["user param", snapshot.userParam],
     ["products param", snapshot.productsParam],
     ["Other params", snapshot.paramNames.join(", ") || "none"],
+    ["Raw query string", snapshot.rawQuery],
+    ["Page path", typeof window === "undefined" ? "" : window.location.pathname],
     ["Last mpsClose", snapshot.lastCloseEvent],
   ];
 

@@ -119,22 +119,37 @@ Note that the allowlist is checked against the hostname alone, so a Vercel *prev
 its generated `*.vercel.app` URL will always fail it. Assign a `bootz.com` subdomain to the branch
 if previews need to work.
 
-### Checking what the bundle actually supports
+### `npm run bv:check` — what the deployment actually serves
 
-`bv.js` is generated per deployment zone and carries the list of apps that zone supports. Because it
-is plain JavaScript at a public URL, this is directly checkable rather than a matter of trust:
+Everything Bazaarvoice deploys is public JavaScript, so what a zone supports is checkable rather
+than a matter of trust. This reads it for both environments:
 
 ```bash
-curl -s https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/bv.js \
-  | head -c 600                                   # the Capabilities banner and build date
-curl -s https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/bv.js \
-  | grep -o 'publicName:"[a-z_]*"' | sort -u       # every valid data-bv-show value
+npm run bv:check
+npm run bv:check -- --env staging
+npm run bv:check -- --host reviews-test.bootz.com   # also verify that hostname
 ```
 
-A `data-bv-show` value that is not in that `publicName` list has no handler: bv.js hits an unknown
-app, throws, and loads nothing further — which looks exactly like a catalog problem but is not one.
-Confirm `product_picker` is listed before spending time on the feed. The banner's build date also
-shows whether recent portal changes have been compiled into the bundle at all.
+It reports four things:
+
+- **built** — the deployment's build date. **A portal change that has not moved this date has not
+  reached the environment.** Saving in the portal is not the same as deploying; see below.
+- **capabilities** and **data-bv-show** — the app registry. A `data-bv-show` value absent from that
+  list has no handler, so bv.js hits an unknown app, throws, and loads nothing further. That looks
+  exactly like a catalog problem and is not one.
+- **product_picker** — REGISTERED or not, which is the single fact that matters here.
+- **allowed domains** — the hostname allowlist, plus a verdict for `--host` if given.
+
+Exit status is non-zero when something is not ready, so it works in a script.
+
+### Portal changes need deploying, not just saving
+
+The domains allowlist and the enabled features live in an **implementation**, and an implementation
+only takes effect once it is deployed to a zone and environment: Configuration → Site Manager →
+Implementations → **Deploy** (choose zone and environment), then the green arrow between staging and
+production to publish. The loader bundle and its config files share a build timestamp, which is why
+`npm run bv:check` reporting an unchanged **built** date is the reliable signal that a change has
+been saved but not deployed.
 
 ### Where `Shower_Base` has to be mapped
 

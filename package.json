@@ -2,7 +2,7 @@
   "name": "bootz-bazaarvoice",
   "version": "1.0.0",
   "private": true,
-  "description": "Host the Bazaarvoice Multi-Product Submission (MPS) form on a custom domain.",
+  "description": "Host the Bazaarvoice Product Picker on a Bootz domain.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "check": "npm run typecheck && npm run lint && npm run build && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run build && npm run test",
+    "bv:check": "node scripts/bv-doctor.mjs"
   },
   "dependencies": {
     "next": "^16.3.2",

@@ -77,8 +77,12 @@ export function parseRegistry(text) {
   return [...new Set([...text.matchAll(/publicName:"([a-z_]+)"/g)].map((match) => match[1]))].sort();
 }
 
-/** The hostname allowlist bv.js enforces. */
-export function parseDomains(text) {
+/**
+ * The hostname allowlist, from the deployment *config* file.
+ *
+ * Shape: `"allowSubdomain":true,"domainAddress":"bootz.com"`.
+ */
+export function parseConfigDomains(text) {
   const addresses = [...text.matchAll(/"domainAddress":"([^"]+)"/g)].map((match) => match[1]);
   const flags = [...text.matchAll(/"allowSubdomain":(true|false)/g)].map(
     (match) => match[1] === "true",
@@ -89,9 +93,38 @@ export function parseDomains(text) {
   }));
 }
 
+/**
+ * The hostname allowlist **baked into bv.js**, which is the one that decides.
+ *
+ * bv.js does not read the config files for this. It compares
+ * `location.hostname` against its own embedded list and, on no match, throws
+ *
+ *     "Bazaarvoice is not configured for the domain <host>."
+ *
+ * before loading any app module. So a domain added in the portal has no effect
+ * until bv.js itself is regenerated — which is why this is reported separately
+ * from the config file's list.
+ *
+ * Shape in the minified bundle: `{firstPartyCookieEnabled:!0,domain:".bootz.com"}`,
+ * where a leading dot means subdomains are included.
+ */
+export function parseLoaderDomains(text) {
+  return [...new Set([...text.matchAll(/\bdomain:"(\.[^"]+)"/g)].map((match) => match[1]))].map(
+    (raw) => ({ domain: raw.replace(/^\./, ""), allowSubdomain: raw.startsWith(".") }),
+  );
+}
+
 export function hostAllowed(host, domains) {
   return domains.some(({ domain, allowSubdomain }) =>
     allowSubdomain ? host === domain || host.endsWith(`.${domain}`) : host === domain,
+  );
+}
+
+function describeDomains(domains) {
+  return (
+    domains
+      .map(({ domain, allowSubdomain }) => `${domain}${allowSubdomain ? " (+subdomains)" : ""}`)
+      .join(", ") || "none found"
   );
 }
 
@@ -119,29 +152,35 @@ async function reportEnvironment(environment, host, fileOverride) {
   const pickerReady = registry.includes("product_picker");
   console.log(`  product_picker    ${pickerReady ? "REGISTERED" : "NOT REGISTERED"}`);
 
-  if (fileOverride) return pickerReady;
+  // The list bv.js actually enforces, embedded in the bundle itself.
+  const loaderDomains = parseLoaderDomains(loaderText);
+  console.log(`  allowlist (bv.js) ${describeDomains(loaderDomains)}`);
 
-  let domains = [];
-  try {
-    domains = parseDomains(await read(config));
-  } catch (error) {
-    console.log(`  domains           unreadable: ${error.message}`);
-    return pickerReady;
-  }
-
-  console.log(
-    `  allowed domains   ${domains
-      .map(({ domain, allowSubdomain }) => `${domain}${allowSubdomain ? " (+subdomains)" : ""}`)
-      .join(", ")}`,
-  );
-
+  let hostOk = true;
   if (host) {
-    const ok = hostAllowed(host, domains);
-    console.log(`  ${host} ${ok ? "is ALLOWED" : "is NOT ALLOWLISTED"}`);
-    return pickerReady && ok;
+    hostOk = hostAllowed(host, loaderDomains);
+    console.log(`  this host         ${host} — ${hostOk ? "ALLOWED" : "NOT ALLOWLISTED"}`);
+    if (!hostOk) {
+      console.log(`                    bv.js will throw: "Bazaarvoice is not configured for the domain ${host}."`);
+    }
   }
 
-  return pickerReady;
+  if (fileOverride) return pickerReady && hostOk;
+
+  // The config file's copy, reported only to show when the two disagree —
+  // which means a portal change reached one artifact and not the other.
+  try {
+    const configDomains = parseConfigDomains(await read(config));
+    const same =
+      describeDomains(configDomains) === describeDomains(loaderDomains);
+    console.log(
+      `  allowlist (config)${same ? " same as bv.js" : ` DIFFERS: ${describeDomains(configDomains)}`}`,
+    );
+  } catch (error) {
+    console.log(`  allowlist (config) unreadable: ${error.message}`);
+  }
+
+  return pickerReady && hostOk;
 }
 
 async function main() {

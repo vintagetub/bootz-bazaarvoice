@@ -67,23 +67,34 @@ error**:
    one is easy to get wrong and invisible without checking.
 3. **`Shower_Base` must exist in the product catalog** — see further below.
 
-### The domain allowlist
+### The domain allowlist — and why it is baked into bv.js
 
-bv.js checks the page's hostname against a `domains` list in the deployment config and stops if it
-is absent. Nothing is logged that identifies the cause, so it looks exactly like every other reason
-the container might stay empty.
+**The allowlist that matters is embedded in `bv.js` itself, not in the config files.** bv.js compares
+`location.hostname` against its own list and, on no match, throws before loading any app module:
 
-The list is readable, and `/debug/picker` checks it and prints the verdict. By hand:
-
-```bash
-curl -s https://apps.bazaarvoice.com/deployments/bootz/main_site/production/en_US/swat-submission-config.js \
-  | grep -o '"domainAddress":"[^"]*"'
+```js
+if (!e.isValid) throw "Bazaarvoice is not configured for the domain ".concat(host, ".")
 ```
 
-Entries carry `allowSubdomain`, so an entry for `bootz.com` with that flag covers
-`reviews.bootz.com` and any other subdomain. **That is the cheapest route to an allowlisted host:
-serving this app from a `bootz.com` subdomain needs no Bazaarvoice change at all.** A
-`*.vercel.app` hostname has to be added explicitly, and only the exact one that was added works.
+It throws a bare **string**, not an `Error`. From a cross-origin script that reaches
+`window.onerror` as `Script error.` with no detail — which is exactly what an unallowlisted host
+looks like, and why it is indistinguishable from every other cause of an empty container.
+
+The consequence matters: **a domain added in the Bazaarvoice portal has no effect until `bv.js` is
+regenerated.** The portal's own "Installed" timestamp on the implementation is not evidence that
+this happened; compare `built` from `npm run bv:check` against the deploy time to tell.
+
+```bash
+npm run bv:check -- --host bootz-bazaarvoice.vercel.app
+```
+
+That reports the loader's embedded list, whether the host passes, and the exact string bv.js would
+throw. It also reports the config file's copy of the list, flagging when the two disagree — which
+means a portal change reached one artifact and not the other.
+
+Entries in the loader carry a leading dot (`.bootz.com`) meaning subdomains are included, so any
+`bootz.com` subdomain passes without a Bazaarvoice change. A `*.vercel.app` hostname has to be added
+explicitly, and only the exact one added works.
 
 ### Testing on an allowlisted host, without touching production
 

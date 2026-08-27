@@ -24,15 +24,15 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 
   /**
-   * Lets `next dev` serve requests whose Host header is a bootz.com subdomain.
+   * Lets `next dev` serve requests whose Host header is one of this project's
+   * deployed hostnames.
    *
-   * bv.js checks `window.location.hostname` against the Bazaarvoice allowlist,
-   * which contains bootz.com with allowSubdomain. So mapping a test subdomain to
-   * 127.0.0.1 in /etc/hosts makes local development pass that check without any
-   * DNS change or Bazaarvoice request. See README ("Testing on an allowlisted
-   * host").
+   * bv.js checks `window.location.hostname` against its allowlist. Once these
+   * hostnames are in that allowlist, mapping one to 127.0.0.1 in /etc/hosts lets
+   * local development pass the same check the deployed site does. See README
+   * ("Local development against the allowlist").
    */
-  allowedDevOrigins: ["bv-test.bootz.com", "reviews-test.bootz.com"],
+  allowedDevOrigins: ["bootz-bazaarvoice.vercel.app", "bootz-warranty.vercel.app"],
 
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

@@ -17,8 +17,9 @@
  * Usage:
  *   npm run bv:check                      both environments
  *   npm run bv:check -- --env production  one of them
- *   npm run bv:check -- --host reviews-test.bootz.com
- *                                         also report whether that host passes
+ *   npm run bv:check -- --host other.example.com
+ *                                         check a hostname other than this
+ *                                         project's own (repeatable)
  *   npm run bv:check -- --file ./bv.js    parse a local copy instead of fetching
  */
 
@@ -26,16 +27,24 @@ import { pathToFileURL } from "node:url";
 
 const LOADER_HOST = "https://apps.bazaarvoice.com";
 
+/** The hostnames this project is deployed to, checked unless --host overrides. */
+const APP_HOSTS = ["bootz-bazaarvoice.vercel.app", "bootz-warranty.vercel.app"];
+
 function parseArgs(argv) {
-  const args = { env: null, host: null, file: null };
+  const args = { env: null, hosts: [], file: null };
   for (let i = 0; i < argv.length; i += 1) {
     const [flag, inline] = argv[i].split("=");
     const value = inline ?? argv[i + 1];
-    if (flag === "--env" || flag === "--host" || flag === "--file") {
+    if (flag === "--env" || flag === "--file") {
       args[flag.slice(2)] = value;
+      if (inline === undefined) i += 1;
+    } else if (flag === "--host") {
+      // Repeatable, so several hostnames can be checked in one run.
+      if (value) args.hosts.push(value);
       if (inline === undefined) i += 1;
     }
   }
+  if (args.hosts.length === 0) args.hosts = APP_HOSTS;
   return args;
 }
 
@@ -128,7 +137,7 @@ function describeDomains(domains) {
   );
 }
 
-async function reportEnvironment(environment, host, fileOverride) {
+async function reportEnvironment(environment, hosts, fileOverride) {
   const { loader, config } = urls(environment);
   console.log(`\n${"=".repeat(72)}\n${environment.toUpperCase()}\n${"=".repeat(72)}`);
 
@@ -157,11 +166,14 @@ async function reportEnvironment(environment, host, fileOverride) {
   console.log(`  allowlist (bv.js) ${describeDomains(loaderDomains)}`);
 
   let hostOk = true;
-  if (host) {
-    hostOk = hostAllowed(host, loaderDomains);
-    console.log(`  this host         ${host} — ${hostOk ? "ALLOWED" : "NOT ALLOWLISTED"}`);
-    if (!hostOk) {
-      console.log(`                    bv.js will throw: "Bazaarvoice is not configured for the domain ${host}."`);
+  for (const host of hosts) {
+    const ok = hostAllowed(host, loaderDomains);
+    hostOk = hostOk && ok;
+    console.log(`  ${host.padEnd(30)} ${ok ? "ALLOWED" : "NOT ALLOWLISTED"}`);
+    if (!ok) {
+      console.log(
+        `    bv.js will throw: "Bazaarvoice is not configured for the domain ${host}."`,
+      );
     }
   }
 
@@ -190,7 +202,7 @@ async function main() {
   let allGood = true;
   for (const environment of environments) {
     // Sequential on purpose: the output is meant to be read top to bottom.
-    const ok = await reportEnvironment(environment, args.host, args.file);
+    const ok = await reportEnvironment(environment, args.hosts, args.file);
     allGood = allGood && ok;
   }
 

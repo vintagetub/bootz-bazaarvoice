@@ -92,43 +92,37 @@ That reports the loader's embedded list, whether the host passes, and the exact 
 throw. It also reports the config file's copy of the list, flagging when the two disagree — which
 means a portal change reached one artifact and not the other.
 
-Entries in the loader carry a leading dot (`.bootz.com`) meaning subdomains are included, so any
-`bootz.com` subdomain passes without a Bazaarvoice change. A `*.vercel.app` hostname has to be added
-explicitly, and only the exact one added works.
+Entries in the loader carry a leading dot (`.bootz.com`) meaning subdomains are included. A
+`*.vercel.app` hostname has no such wildcard to inherit, so each one has to be added explicitly and
+only the exact hostname added will work.
 
-### Testing on an allowlisted host, without touching production
+### The two hostnames this project uses
 
-The allowlist entry for `bootz.com` has `allowSubdomain: true`, and it is **identical in both the
-staging and production deployment configs**. So any `bootz.com` subdomain passes the check —
-including a throwaway test one that has nothing to do with the live site. Three ways to use that,
-cheapest first.
+This app is deployed to:
 
-**1. /etc/hosts, for local development.** No DNS, no Bazaarvoice request, works immediately:
+- `https://bootz-bazaarvoice.vercel.app/`
+- `https://bootz-warranty.vercel.app/`
+
+**Both must be in the allowlist embedded in `bv.js`, or the picker cannot work on either.**
+`npm run bv:check` reports the verdict for both by default.
+
+### Local development against the allowlist
+
+bv.js checks `window.location.hostname`, so `localhost` fails the check the same way an
+unallowlisted deployment does. Once the hostnames above are in the allowlist, map one to the loopback
+address to develop locally against the real check:
 
 ```
-127.0.0.1  bv-test.bootz.com
+127.0.0.1  bootz-bazaarvoice.vercel.app
 ```
 
-Then `npm run dev` and open `http://bv-test.bootz.com:3000`. bv.js reads
-`window.location.hostname`, sees an allowlisted host, and proceeds. `allowedDevOrigins` in
-`next.config.ts` already permits this hostname.
+Then `npm run dev` and open `http://bootz-bazaarvoice.vercel.app:3000`. `allowedDevOrigins` in
+`next.config.ts` already permits that Host header.
 
-Caveat: this serves over plain HTTP. Bazaarvoice's device fingerprinting and any `Secure` cookies
-may not behave, so treat it as "does the picker render at all", not as a full submission test. If the
-CSP gets in the way locally, set `CSP_MODE=off` in `.env.local`.
-
-**2. A test subdomain pointed at this Vercel project.** `bv-test.bootz.com` or
-`reviews-test.bootz.com` — add it under Vercel → Settings → Domains, then a CNAME wherever
-`bootz.com` DNS lives. Serves over HTTPS, so submissions work properly. This is a separate Vercel
-project from any real Bootz site, so nothing customer-facing is involved. Pair it with
-`BV_ENVIRONMENT=staging` to keep test submissions out of the production review pipeline.
-
-**3. `bootz-v3.vercel.app`,** which is already allowlisted. If that is an existing Bootz Vercel
-project, moving the alias needs no DNS work at all — but check what it is currently serving first.
-
-Note that the allowlist is checked against the hostname alone, so a Vercel *preview* deployment on
-its generated `*.vercel.app` URL will always fail it. Assign a `bootz.com` subdomain to the branch
-if previews need to work.
+Caveat: plain HTTP, so device fingerprinting and `Secure` cookies may misbehave — good enough to
+answer "does the picker render", not a full submission test. If the CSP gets in the way locally, set
+`CSP_MODE=off` in `.env.local`. Remember to remove the hosts entry afterwards, or the real
+deployment becomes unreachable from that machine.
 
 ### `npm run bv:check` — what the deployment actually serves
 
@@ -138,7 +132,7 @@ than a matter of trust. This reads it for both environments:
 ```bash
 npm run bv:check
 npm run bv:check -- --env staging
-npm run bv:check -- --host reviews-test.bootz.com   # also verify that hostname
+npm run bv:check -- --host some-other-host.example.com   # check a different hostname
 ```
 
 It reports four things:
@@ -149,7 +143,8 @@ It reports four things:
   list has no handler, so bv.js hits an unknown app, throws, and loads nothing further. That looks
   exactly like a catalog problem and is not one.
 - **product_picker** — REGISTERED or not, which is the single fact that matters here.
-- **allowed domains** — the hostname allowlist, plus a verdict for `--host` if given.
+- **allowed domains** — the allowlist embedded in bv.js, plus an ALLOWED / NOT ALLOWLISTED verdict
+  for each of this project's two hostnames. `--host` (repeatable) checks others instead.
 
 Exit status is non-zero when something is not ready, so it works in a script.
 

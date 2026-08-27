@@ -478,7 +478,7 @@ test.describe("domain allowlist check", () => {
         contentType: "text/javascript",
         body: configBody([
           { domainAddress: "bootz.com", allowSubdomain: true },
-          { domainAddress: "bootz-v3.vercel.app", allowSubdomain: true },
+          { domainAddress: "some-other-host.example.com", allowSubdomain: true },
         ]),
       }),
     );
@@ -488,7 +488,7 @@ test.describe("domain allowlist check", () => {
     await expect(panel).toContainText("Domain allowlist");
     await expect(panel).toContainText("NOT ALLOWLISTED");
     // And it must show what IS allowed, so the fix is obvious.
-    await expect(panel).toContainText("bootz-v3.vercel.app");
+    await expect(panel).toContainText("some-other-host.example.com");
   });
 
   test("passes a hostname covered by a wildcard subdomain entry", async ({ page }) => {
